@@ -111,7 +111,7 @@ BrainFlow raw counts, rows in wire order. OpenMuse and Mind Monitor show counts 
 ### Suggestions
 
 - Noisy threshold (NOISY_UV, now 75 µV): at rest the spread stayed under 20 µV (TP9) in 95% of windows; with the jaw clenched it stayed above 80 µV (TP9) in 95% of windows. A threshold of about 40 µV, the geometric midpoint, would separate the two. The threshold in force lies inside that gap, 55 µV above rest and 5 µV under the clench. Blinks stayed under it: 35 µV at most (AF7).
-- Rail threshold (RAIL_UV, now 1000 µV): cannot be reached. The amplifier ends at about ±725 µV (BrainFlow 5.23 and later) and each window is centred before it is checked, so a channel stuck at the rail reads flat, never railed. Counting the samples within 5% of full scale (beyond about 690 µV) before centring would see it: 30% of the lifted TP9 samples were there, 0% at rest.
+- Rail threshold (RAIL_UV, now 710 µV, within 2% of the ±725 µV full scale; it was 1000 µV, which cannot be reached). The channel check is still given centred windows, where a channel stuck at the rail reads flat; the live contact view counts railed samples before centring. Within 5% of full scale (beyond about 690 µV): 30% of the lifted TP9 samples, 0% at rest.
 - Flat threshold (FLAT_UV, now 1 µV): the lowest spread at rest was 10 µV (TP9), clear of it. No change suggested.
 - Lifted sensor: with the left ear sensor off the skin the channel check still called TP9 ok in 100% of windows (noisy 0%, flat 0%, railed 0%); the robust spread was 39 µV against 15 µV at rest, the plain std 215 µV against 15 µV. Telling a lifted sensor needs a measure other than the robust spread.
 

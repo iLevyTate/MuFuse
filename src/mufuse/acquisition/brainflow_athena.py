@@ -25,7 +25,7 @@ from mufuse.acquisition.athena import (
     DEFAULT_PRESET,
     validate_preset,
 )
-from mufuse.acquisition.athena_status import firmware_from_log
+from mufuse.acquisition.athena_status import HeadsetStatus, battery_scale, status_from_log
 from mufuse.acquisition.loss import skipped_subpackets
 from mufuse.acquisition.timing import Retimer
 from mufuse.acquisition.types import (
@@ -38,7 +38,7 @@ from mufuse.acquisition.types import (
 )
 from mufuse.runlog import log_path
 
-FIRMWARE_WAIT_S = 0.3  # the status reply to BrainFlow's `v6` lands shortly after connecting
+FIRMWARE_WAIT_S = 0.3  # the status replies to BrainFlow's `v6` and `s` land while connecting
 LOG_KEEP_BYTES = 1_000_000  # the debug log grows with every connection; start over above this
 
 _BF_PRESET = {
@@ -51,6 +51,10 @@ _BF_PRESET = {
 # set per process and a failed redirect sticks, so it is tried once: None = not tried yet.
 _log_ok: bool | None = None
 _firmware: str | None = None  # once read, reconnects in this process skip the readout
+_status: HeadsetStatus | None = None  # the headset's own battery and active preset, if read
+# Whether BrainFlow's battery row reads half of the headset's value (see athena_status.py):
+# decided at the first reading, kept for reconnects. None = not decided yet.
+_battery_scale: float | None = None
 
 
 class BrainFlowAthena:
@@ -82,12 +86,18 @@ class BrainFlowAthena:
 
     @property
     def device(self) -> DeviceInfo:
+        extra: dict[str, str] = {}
+        if _status is not None and _status.active_preset is not None:
+            extra["active_preset"] = _status.active_preset
+        if _status is not None and _status.battery_pct is not None:
+            extra["status_battery_pct"] = str(_status.battery_pct)
         return DeviceInfo(
             name=self._name,
             preset=self._preset,
             driver=f"brainflow-{BoardShim.get_version()}",
             address=self._address,
             firmware=_firmware,
+            extra=extra,
         )
 
     @property
@@ -99,9 +109,9 @@ class BrainFlowAthena:
         return dict(self._lost)
 
     def start(self) -> None:
-        global _firmware
-        # BrainFlow only logs the firmware status reply at debug level, so log to a file while
-        # connecting and read it back (see athena_status.py).
+        global _firmware, _status
+        # BrainFlow only logs the status replies at debug level, so log to a file while
+        # connecting and read them back (see athena_status.py).
         log_from = None if _firmware else _debug_log_offset(self._bf_log)
         if log_from is None:
             _set_log_level(LogLevels.LEVEL_WARN)
@@ -122,7 +132,8 @@ class BrainFlowAthena:
             board.prepare_session()
             board.start_stream()
             if log_from is not None:
-                _firmware = _wait_for_firmware(self._bf_log, log_from)
+                _status = _wait_for_status(self._bf_log, log_from)
+                _firmware = _status.firmware
         except (BrainFlowError, OSError) as exc:  # OSError: the driver library did not load
             if board is not None:
                 _safe_release(board)
@@ -148,7 +159,10 @@ class BrainFlowAthena:
                 ts_row, counter_row, data_rows = self._rows[kind]
                 # Keep every sample; arrival-time stamps are duplicated/jittery (see timing.py).
                 ts = self._retimers[kind].retime(raw[ts_row].astype(np.float64))
-                chunks.append(Chunk(kind, ts, raw[data_rows].T.astype(np.float64)))
+                data = raw[data_rows].T.astype(np.float64)
+                if kind is StreamKind.OPTICS:
+                    _correct_battery(data[:, -1])
+                chunks.append(Chunk(kind, ts, data))
                 self._count_lost(kind, raw, counter_row)
         except BrainFlowError as exc:
             raise SourceError(f"Lost the headband stream: {exc}") from exc
@@ -166,6 +180,17 @@ class BrainFlowAthena:
         if self._board is not None:
             _safe_release(self._board)
             self._board = None
+
+
+def _correct_battery(battery: FloatArray) -> None:
+    """Double BrainFlow's battery readings in place when they read half of the headset's own
+    level (it divides by 512, not 256). 0 means not reported yet and stays 0."""
+    global _battery_scale
+    reported = battery > 0
+    if _battery_scale is None and reported.any():
+        _battery_scale = battery_scale(float(battery[reported][0]), _status and _status.battery_pct)
+    if _battery_scale is not None:
+        battery[reported] *= _battery_scale
 
 
 def _safe_release(board: BoardShim) -> None:
@@ -204,16 +229,16 @@ def _debug_log_offset(log: Path) -> int | None:
         return None
 
 
-def _wait_for_firmware(log: Path, offset: int) -> str | None:
+def _wait_for_status(log: Path, offset: int) -> HeadsetStatus:
     deadline = time.monotonic() + FIRMWARE_WAIT_S
     try:
         while True:
             with log.open("rb") as fh:
                 fh.seek(offset)
                 text = fh.read().decode("utf-8", errors="replace")
-            firmware = firmware_from_log(text)
-            if firmware is not None or time.monotonic() >= deadline:
-                return firmware
+            status = status_from_log(text)
+            if status.complete or time.monotonic() >= deadline:
+                return status
             time.sleep(0.1)
     except Exception:  # an unreadable log or reply is no reason to give up a connection
-        return None
+        return HeadsetStatus()

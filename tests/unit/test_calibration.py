@@ -94,12 +94,11 @@ def test_a_still_phase_noisier_than_the_suggestion_is_pointed_out() -> None:
     )
 
 
-def test_the_rail_note_says_that_1000_uv_cannot_be_reached() -> None:
+def test_the_rail_note_gives_the_threshold_at_full_scale() -> None:
     (line,) = [t for t in suggestions({"H8": h8_numbers()}) if t.startswith("Rail")]
 
-    assert "now 1000 µV" in line
-    assert "±725 µV" in line
-    assert "cannot be reached" in line
+    assert "now 710 µV, within 2% of the ±725 µV full scale" in line
+    assert "it was 1000 µV, which cannot be reached" in line
     assert "about 690 µV" in line
     assert "30% of the lifted TP9 samples" in line
 

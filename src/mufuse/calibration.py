@@ -216,12 +216,12 @@ def _rail(measures: Measures) -> str:
     h8 = measures["H8"]
     near = round((1 - RAIL_MARGIN) * EEG_RANGE_UV, -1)
     return (
-        f"Rail threshold (RAIL_UV, now {RAIL_UV:.0f} µV): cannot be reached. The amplifier ends "
-        f"at about ±{EEG_RANGE_UV:.0f} µV (BrainFlow 5.23 and later) and each window is centred "
-        "before it is checked, so a channel stuck at the rail reads flat, never railed. Counting "
-        f"the samples within {RAIL_MARGIN:.0%} of full scale (beyond about {near:.0f} µV) before "
-        f"centring would see it: {_pct(h8['lift.TP9.rail_share'])}% of the lifted TP9 samples "
-        f"were there, {_pct(h8['rest.TP9.rail_share'])}% at rest."
+        f"Rail threshold (RAIL_UV, now {RAIL_UV:.0f} µV, within 2% of the ±{EEG_RANGE_UV:.0f} µV "
+        "full scale; it was 1000 µV, which cannot be reached). The channel check is still given "
+        "centred windows, where a channel stuck at the rail reads flat; the live contact view "
+        f"counts railed samples before centring. Within {RAIL_MARGIN:.0%} of full scale (beyond "
+        f"about {near:.0f} µV): {_pct(h8['lift.TP9.rail_share'])}% of the lifted TP9 samples, "
+        f"{_pct(h8['rest.TP9.rail_share'])}% at rest."
     )
 
 

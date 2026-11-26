@@ -7,6 +7,9 @@ from mufuse.acquisition.athena import (
     ATHENA_PRESETS,
     ATHENA_STREAMS,
     DEFAULT_PRESET,
+    preset_code,
+    preset_from_code,
+    preset_warning,
     validate_preset,
 )
 from mufuse.acquisition.types import Chunk, StreamKind
@@ -62,3 +65,26 @@ def test_validate_preset() -> None:
     assert validate_preset("p1035") == "p1035"
     with pytest.raises(ValueError, match="p1041"):
         validate_preset("p9999")
+
+
+@pytest.mark.parametrize("preset", ["p20", "p21", "p50", "p51", "p60", "p61"])
+def test_presets_without_optics_on_the_athena_are_refused(preset: str) -> None:
+    assert preset not in ATHENA_PRESETS
+    with pytest.raises(ValueError, match="no optics"):
+        validate_preset(preset)
+
+
+def test_preset_names_are_hex_codes() -> None:
+    assert preset_code("p1041") == 0x1041 == 4161
+    assert preset_code("p1021") == 4129
+    assert preset_code("pzz") is None
+    assert preset_from_code(4161) == "p1041"
+
+
+def test_a_preset_the_headset_did_not_take_is_named() -> None:
+    warning = preset_warning("p1041", "p1021")
+    assert warning is not None
+    assert "p1021" in warning
+    assert "p1041" in warning
+    assert preset_warning("p1041", "p1041") is None
+    assert preset_warning("p1041", None) is None

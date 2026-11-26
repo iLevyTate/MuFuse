@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from mufuse.acquisition.athena_status import firmware_from_log
+import pytest
+
+from mufuse.acquisition.athena_status import battery_scale, firmware_from_log, status_from_log
 
 
 def _log_lines(
@@ -63,3 +65,45 @@ def test_stale_bytes_after_a_short_length_are_ignored() -> None:
     log = "Status packet: " + " ".join(str(b) for b in packet)
     log += "\nStatus packet: " + " ".join(str(b) for b in bytes([8]) + b',"rc":0}')
     assert firmware_from_log(log) == "3.1.19"
+
+
+# Battery and active preset: the second reply, to `s` ---------------------------------------
+# Made-up identifiers: a real reply also carries the headset's name, serial and address.
+_FIRST = '{"fw":"3.1.31","bn":1,"tp":"consumer","sp":"Athena","rc":0}'
+_POWER_UP = '{"hn":"MuseS-1A2B","sn":"0000-TEST","id":"0","bp":99.46,"ps":4129,"rc":0}'
+_APPLIED = '{"hn":"MuseS-1A2B","sn":"0000-TEST","id":"0","bp":99.40,"ps":4161,"rc":0}'
+
+
+def test_reads_battery_and_preset_from_the_status_replies() -> None:
+    log = "\n".join(_log_lines(r) for r in (_FIRST, _POWER_UP, '{"rc":0}', _APPLIED))
+    status = status_from_log(log)
+    assert status.firmware == "3.1.31"
+    # The first reply after power-up still shows the power-up preset; the last one counts.
+    assert status.preset_code == 4161
+    assert status.active_preset == "p1041"
+    assert status.battery_pct == pytest.approx(99.40)
+    assert status.complete
+
+
+def test_a_reply_without_battery_or_preset_leaves_them_unknown() -> None:
+    status = status_from_log(_log_lines(_FIRST))
+    assert (status.battery_pct, status.preset_code, status.active_preset) == (None, None, None)
+    assert not status.complete
+    assert status_from_log("").firmware is None
+
+
+@pytest.mark.parametrize(
+    ("row", "bp", "scale"),
+    [
+        (49.73, 99.46, 2.0),  # BrainFlow divides by 512 where the headset counts in 256ths
+        (49.0, 99.46, 2.0),  # a little drained since the status reply
+        (99.4, 99.46, 1.0),  # a driver that already reads it right
+        (30.0, 99.46, 1.0),  # neither: leave it alone
+        (49.73, None, 1.0),  # no status reply: nothing to compare with
+        (0.0, 99.46, 1.0),  # not reported yet
+    ],
+)
+def test_battery_row_is_doubled_only_when_it_reads_half_the_headset_value(
+    row: float, bp: float | None, scale: float
+) -> None:
+    assert battery_scale(row, bp) == scale

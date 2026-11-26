@@ -11,11 +11,14 @@ from brainflow.board_shim import BoardShim, BrainFlowError, BrainFlowPresets, Lo
 
 import mufuse.acquisition.brainflow_athena as bfa
 from mufuse.acquisition.athena import ATHENA_BOARD_ID
+from mufuse.acquisition.athena_status import HeadsetStatus
 from mufuse.acquisition.brainflow_athena import BrainFlowAthena
 from mufuse.acquisition.types import SourceError, StreamKind
 from mufuse.runlog import log_path
 
 STATUS = '{"hw":"01.1","fw":"3.1.29","sp":"Athena","rc":0}'
+# The reply to `s`: battery and active preset (made-up identifiers).
+STATE = '{"hn":"MuseS-1A2B","id":"0","bp":80.00,"ps":4161,"rc":0}'
 DEBUG, WARN = LogLevels.LEVEL_DEBUG.value, LogLevels.LEVEL_WARN.value
 EEG, MOTION, OPTICS = (
     BrainFlowPresets.DEFAULT_PRESET,
@@ -31,6 +34,7 @@ class FakeBoard:
     fail: ClassVar[dict[Any, Exception]]
     log: ClassVar[Path | None]
     data: ClassVar[dict[int, np.ndarray]]  # preset -> the next get_board_data result
+    replies: ClassVar[tuple[str, ...]]  # what the headset answers while connecting
 
     def __init__(self, board_id: int, params: object) -> None:
         self._step("create")
@@ -62,10 +66,11 @@ class FakeBoard:
 
     def prepare_session(self) -> None:
         self._step("prepare")
-        if self.log is not None:  # the reply to `v6`, as BrainFlow logs it at debug level
-            packet = " ".join(str(b) for b in bytes([len(STATUS)]) + STATUS.encode())
+        if self.log is not None:  # the replies to `v6` and `s`, as BrainFlow logs them
             with self.log.open("a", encoding="utf-8") as fh:
-                fh.write(f"[board_logger] [debug] Status packet: {packet}\n")
+                for reply in self.replies:
+                    packet = " ".join(str(b) for b in bytes([len(reply)]) + reply.encode())
+                    fh.write(f"[board_logger] [debug] Status packet: {packet}\n")
 
     def start_stream(self) -> None:
         self._step("start")
@@ -88,10 +93,13 @@ def board(monkeypatch: pytest.MonkeyPatch) -> type[FakeBoard]:
         fail: ClassVar[dict[Any, Exception]] = {}
         log: ClassVar[Path | None] = None
         data: ClassVar[dict[int, np.ndarray]] = {}
+        replies: ClassVar[tuple[str, ...]] = (STATUS, STATE)
 
     monkeypatch.setattr(bfa, "BoardShim", Board)
     monkeypatch.setattr(bfa, "_log_ok", None)  # as in a new process
     monkeypatch.setattr(bfa, "_firmware", None)
+    monkeypatch.setattr(bfa, "_status", None)
+    monkeypatch.setattr(bfa, "_battery_scale", None)
     monkeypatch.setattr(bfa, "FIRMWARE_WAIT_S", 0.0)
     return Board
 
@@ -149,10 +157,10 @@ def test_connects_when_the_log_level_cannot_be_set(board: type[FakeBoard]) -> No
 def test_connects_when_the_status_reply_cannot_be_parsed(
     board: type[FakeBoard], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def surprise(log: str) -> str | None:
+    def surprise(log: str) -> HeadsetStatus:
         raise ValueError("not a status reply")
 
-    monkeypatch.setattr(bfa, "firmware_from_log", surprise)
+    monkeypatch.setattr(bfa, "status_from_log", surprise)
     source = BrainFlowAthena(device_name="MuseS-TEST")
     source.start()
     assert source.device.firmware is None
@@ -166,13 +174,14 @@ def test_reconnect_does_not_wait_for_a_firmware_it_already_knows(
     BrainFlowAthena(device_name="MuseS-TEST").start()
     del board.calls[:]
 
-    def no_wait(log: Path, offset: int) -> str | None:
+    def no_wait(log: Path, offset: int) -> HeadsetStatus:
         raise AssertionError("waited for the firmware again")
 
-    monkeypatch.setattr(bfa, "_wait_for_firmware", no_wait)
+    monkeypatch.setattr(bfa, "_wait_for_status", no_wait)
     again = BrainFlowAthena(device_name="MuseS-TEST")
     again.start()
     assert again.device.firmware == "3.1.29"
+    assert again.device.extra["active_preset"] == "p1041"  # kept from the first connection
     assert "log_file" not in board.calls
     assert ("level", DEBUG) not in board.calls
 
@@ -263,3 +272,50 @@ def test_package_number_low_byte_is_the_counter(board: type[FakeBoard]) -> None:
     board.data = {int(EEG): _samples(EEG, [(3 << 8) | 255, (4 << 8) | 0, (4 << 8) | 2])}
     source.read()
     assert source.lost_subpackets[StreamKind.EEG] == 1
+
+
+# Status reply: battery and preset ---------------------------------------------------------
+
+
+def _optics(battery: list[float]) -> np.ndarray:
+    raw = _samples(OPTICS, list(range(len(battery))))
+    raw[BoardShim.get_board_descr(ATHENA_BOARD_ID, OPTICS)["battery_channel"]] = battery
+    return raw
+
+
+def test_active_preset_and_headset_battery_are_kept_with_the_device(
+    board: type[FakeBoard],
+) -> None:
+    source = BrainFlowAthena(device_name="MuseS-TEST")
+    source.start()
+    assert source.device.extra == {"active_preset": "p1041", "status_battery_pct": "80.0"}
+
+
+def test_battery_row_reading_half_the_headset_value_is_doubled(board: type[FakeBoard]) -> None:
+    source = BrainFlowAthena(device_name="MuseS-TEST")
+    source.start()
+    board.data = {int(OPTICS): _optics([0.0, 0.0, 40.0, 39.9])}
+    (optics,) = source.read()
+    assert optics.data[:, -1].tolist() == [0.0, 0.0, 80.0, 79.8]  # 0 = not reported yet
+    BrainFlowAthena(device_name="MuseS-TEST").start()  # a reconnect keeps the correction
+    board.data = {int(OPTICS): _optics([39.5])}
+    (optics,) = source.read()
+    assert optics.data[:, -1].tolist() == [79.0]
+
+
+def test_battery_row_that_agrees_with_the_headset_is_left_alone(board: type[FakeBoard]) -> None:
+    source = BrainFlowAthena(device_name="MuseS-TEST")
+    source.start()
+    board.data = {int(OPTICS): _optics([80.0, 79.9])}
+    (optics,) = source.read()
+    assert optics.data[:, -1].tolist() == [80.0, 79.9]
+
+
+def test_battery_row_is_left_alone_without_a_status_reply(board: type[FakeBoard]) -> None:
+    board.replies = (STATUS,)
+    source = BrainFlowAthena(device_name="MuseS-TEST")
+    source.start()
+    assert source.device.extra == {}
+    board.data = {int(OPTICS): _optics([40.0])}
+    (optics,) = source.read()
+    assert optics.data[:, -1].tolist() == [40.0]
