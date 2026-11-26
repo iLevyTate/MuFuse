@@ -39,6 +39,8 @@ class StreamSupervisor:
         self.gaps: list[Gap] = []
         self.open_gap: Gap | None = None
         self.on_gap_closed: Callable[[Gap], None] | None = None
+        self.last_error: str | None = None  # why the latest reconnect attempt failed
+        self._lost_before: dict[StreamKind, int] = {}  # from connections already replaced
         self._last_data_at = 0.0
         self._last_sample_t: float | None = None
         self._attempt = 0
@@ -56,6 +58,15 @@ class StreamSupervisor:
         if self.source is not None:
             self.source.stop()
         self.state = State.STOPPED
+
+    @property
+    def lost_subpackets(self) -> dict[StreamKind, int]:
+        """Subpackets lost on the headset link, summed over every connection of this run."""
+        total = dict(self._lost_before)
+        if self.source is not None:
+            for kind, lost in self.source.lost_subpackets.items():
+                total[kind] = total.get(kind, 0) + lost
+        return total
 
     def poll(self) -> list[Chunk]:
         now = self._clock()
@@ -95,13 +106,18 @@ class StreamSupervisor:
         try:
             source = self._factory()
             source.start()
-        except SourceError:
+        except Exception as exc:  # whatever went wrong, it is a failed attempt: keep trying
+            self.last_error = str(exc)
             self._attempt += 1
+            # Counted from the attempt's start: after a long failed scan the next one starts at
+            # once, while quick failures still wait out the backoff.
             self._next_attempt_at = now + self._backoff[min(self._attempt, len(self._backoff) - 1)]
             return
+        self._lost_before = self.lost_subpackets
         self.source = source
         self.state = State.STREAMING
-        self._last_data_at = now
+        self.last_error = None
+        self._last_data_at = self._clock()  # connecting can take seconds; `now` is stale
 
     def _close_gap(self, end: float) -> None:
         assert self.open_gap is not None

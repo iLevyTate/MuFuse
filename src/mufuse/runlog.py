@@ -12,7 +12,7 @@ from platformdirs import user_log_path
 
 from mufuse.acquisition.types import Chunk, StreamKind
 
-Outcome = str  # "signal" | "no_signal" | "connect_error" | "timeout"
+Outcome = str  # "signal" | "no_signal" | "connect_error" | "interrupted" | "timeout"
 
 
 @dataclass(frozen=True)

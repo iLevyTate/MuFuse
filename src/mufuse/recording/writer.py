@@ -101,7 +101,7 @@ class SessionWriter:
     def add_gap(self, gap: Gap) -> None:
         self._append_jsonl("gaps", asdict(gap))
 
-    def finalize(self) -> None:
+    def finalize(self, lost_subpackets: Mapping[StreamKind, int] | None = None) -> None:
         if self._finalized:
             return
         self.close_files()
@@ -110,6 +110,12 @@ class SessionWriter:
             k.value: {"expected": self._expected(k), "received": self._received[k]}
             for k in self._streams
         }
+        if lost_subpackets is not None:
+            # Lost on the headset link, by the device's own counter. An optional key of
+            # format 1: sessions written before it existed do not have it.
+            self._manifest["lost_subpackets"] = {
+                k.value: int(n) for k, n in lost_subpackets.items()
+            }
         _write_json_atomic(self.session_dir / "manifest.json", self._manifest)
         self._finalized = True
 

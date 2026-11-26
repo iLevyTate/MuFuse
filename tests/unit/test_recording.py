@@ -87,3 +87,20 @@ def test_unfinalized_session_with_partial_row_is_readable(writer: SessionWriter)
 def test_finalize_is_idempotent(writer: SessionWriter) -> None:
     writer.finalize()
     writer.finalize()
+
+
+def test_lost_subpackets_are_stored_next_to_completeness(
+    writer: SessionWriter, clock: FakeClock
+) -> None:
+    writer.write([_eeg(clock.now, 256)])
+    writer.finalize(lost_subpackets={StreamKind.EEG: 3, StreamKind.MOTION: 0, StreamKind.OPTICS: 1})
+    manifest = load_session(writer.session_dir).manifest
+    assert manifest["lost_subpackets"] == {"eeg": 3, "motion": 0, "optics": 1}
+    assert manifest["completeness"]["eeg"] == {"expected": 256, "received": 256}
+
+
+def test_sessions_without_lost_subpackets_still_load(writer: SessionWriter) -> None:
+    writer.finalize()  # as written before the field existed
+    session = load_session(writer.session_dir)
+    assert session.finalized
+    assert "lost_subpackets" not in session.manifest

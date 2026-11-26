@@ -19,6 +19,7 @@ class ScriptedSource:
         self.alive = alive
         self.fail_start = fail_start
         self.stopped = False
+        self.lost = 0
 
     @property
     def device(self) -> DeviceInfo:
@@ -39,6 +40,10 @@ class ScriptedSource:
 
     def stop(self) -> None:
         self.stopped = True
+
+    @property
+    def lost_subpackets(self) -> Mapping[StreamKind, int]:
+        return {StreamKind.EEG: self.lost}
 
 
 class Factory:
@@ -131,3 +136,73 @@ def test_initial_connect_failure_raises(clock: FakeClock) -> None:
     sup = StreamSupervisor(Factory([ScriptedSource(clock, fail_start=True)]), clock=clock)
     with pytest.raises(SourceError):
         sup.start()
+
+
+def test_slow_reconnect_is_not_mistaken_for_a_stall(clock: FakeClock) -> None:
+    class SlowToConnect(ScriptedSource):
+        def start(self) -> None:
+            self._clock.advance(5.0)  # a Bluetooth scan and connect blocks for seconds
+
+    dead = ScriptedSource(clock)
+    revived = SlowToConnect(clock, alive=False)  # connected, first read has no EEG yet
+    sup = StreamSupervisor(Factory([dead, revived]), clock=clock)
+    sup.start()
+    dead.alive = False
+    _run(sup, clock, 4.2)  # stall, then the reconnect attempt that takes 5 s
+    assert sup.source is revived
+    _run(sup, clock, 0.1)
+    assert sup.state is State.STREAMING
+    assert not revived.stopped
+
+
+def test_any_error_while_reconnecting_is_a_failed_attempt(clock: FakeClock) -> None:
+    class Broken(ScriptedSource):
+        def start(self) -> None:
+            raise OSError("bluetooth adapter is off")
+
+    dead = ScriptedSource(clock)
+    factory = Factory([dead, Broken(clock), ScriptedSource(clock)])
+    sup = StreamSupervisor(factory, clock=clock)
+    sup.start()
+    dead.alive = False
+    _run(sup, clock, 4.2)  # stall, then the first attempt fails with a non-SourceError
+    assert sup.state is State.RECONNECTING
+    assert sup.last_error == "bluetooth adapter is off"
+    _run(sup, clock, 2.1)  # the backoff goes on: next attempt 2 s later
+    assert sup.state is State.STREAMING
+    assert sup.last_error is None
+
+
+def test_factory_error_while_reconnecting_is_a_failed_attempt(clock: FakeClock) -> None:
+    dead = ScriptedSource(clock)
+    calls = 0
+
+    def factory() -> ScriptedSource:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("driver could not be loaded")
+        return dead if calls == 1 else ScriptedSource(clock)
+
+    sup = StreamSupervisor(factory, clock=clock)
+    sup.start()
+    dead.alive = False
+    _run(sup, clock, 4.2)
+    assert sup.state is State.RECONNECTING
+    assert sup.last_error == "driver could not be loaded"
+
+
+def test_lost_subpackets_add_up_across_reconnects(clock: FakeClock) -> None:
+    first, second = ScriptedSource(clock), ScriptedSource(clock)
+    sup = StreamSupervisor(Factory([first, second]), clock=clock)
+    assert sup.lost_subpackets == {}
+    sup.start()
+    first.lost = 3
+    assert sup.lost_subpackets == {StreamKind.EEG: 3}
+    first.alive = False
+    _run(sup, clock, 3.1)  # reconnecting: the old connection's count still stands
+    assert sup.lost_subpackets == {StreamKind.EEG: 3}
+    _run(sup, clock, 1.1)
+    assert sup.source is second
+    second.lost = 2
+    assert sup.lost_subpackets == {StreamKind.EEG: 5}

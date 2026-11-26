@@ -54,6 +54,10 @@ class SimulatedAthena:
     def streams(self) -> Mapping[StreamKind, StreamSpec]:
         return ATHENA_STREAMS
 
+    @property
+    def lost_subpackets(self) -> Mapping[StreamKind, int]:
+        return dict.fromkeys(ATHENA_STREAMS, 0)  # no headset link, so nothing is lost on it
+
     def start(self) -> None:
         self._t0 = self._clock()
         self._emitted = dict.fromkeys(StreamKind, 0)

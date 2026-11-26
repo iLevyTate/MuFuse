@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import os
+import signal
 import sys
+import threading
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
+from types import FrameType
 from typing import Annotated
 
 import numpy as np
@@ -41,6 +46,7 @@ app = typer.Typer(
 console = Console()
 
 EXIT_BAD_ARGS, EXIT_NONE_FOUND, EXIT_CONNECT, EXIT_WRITE, EXIT_UNREADABLE = 2, 3, 4, 5, 6
+EXIT_INTERRUPTED = 130  # Ctrl+C before anything was shown or recorded
 WINDOW_S = 2.0
 
 
@@ -57,6 +63,18 @@ DeviceOpt = Annotated[str | None, typer.Option(help="Headband name, e.g. MuseS-1
 PresetOpt = Annotated[str, typer.Option(help="Athena device preset")]
 PlayOpt = Annotated[Path | None, typer.Option(help="Session folder for --source play")]
 DurationOpt = Annotated[float | None, typer.Option(help="Stop after N seconds")]
+
+
+def use_utf8_output() -> None:
+    """Piped or redirected output on Windows uses a legacy code page that cannot encode ✓ or ≥."""
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
+@app.callback()
+def _main() -> None:  # pyright: ignore[reportUnusedFunction]
+    use_utf8_output()
 
 
 def _source_factory(
@@ -123,7 +141,9 @@ class LiveStats:
         return sum(c.n_samples for c in self._recent[kind]) / WINDOW_S
 
 
-def _render(sup: StreamSupervisor, stats: LiveStats, recording: str | None) -> Table:
+def _render(
+    sup: StreamSupervisor, stats: LiveStats, recording: str | None, markers: int = 0
+) -> Table:
     table = Table(
         title=f"MuFuse — {sup.state.value}" + (f" — REC {recording}" if recording else "")
     )
@@ -144,7 +164,10 @@ def _render(sup: StreamSupervisor, stats: LiveStats, recording: str | None) -> T
     optics = stats.window(StreamKind.OPTICS)
     battery = f"battery {optics[-1, -1]:.0f}%" if optics.shape[0] else ""
     table.add_row("Optics", f"{stats.rate(StreamKind.OPTICS):.0f}/64", battery)
+    if sup.state is State.RECONNECTING:
+        table.add_row("Link", "", sup.last_error or "reconnecting…")
     if recording:
+        table.add_row("Markers", "", f"{markers} saved")  # so a key press is seen to land
         table.caption = "space = moment marker · 1-9 = start/end block · q = stop"
     return table
 
@@ -222,43 +245,104 @@ def _read_key() -> str | None:
     return None
 
 
+@contextlib.contextmanager
+def _stop_on_ctrl_c() -> Generator[threading.Event]:
+    """Ctrl+C sets a flag instead of raising, so it cannot land in saving or in the release."""
+    stop = threading.Event()
+    if threading.current_thread() is not threading.main_thread():
+        yield stop  # signal handlers belong to the main thread
+        return
+
+    def on_ctrl_c(signum: int, frame: FrameType | None) -> None:
+        stop.set()
+
+    previous = signal.signal(signal.SIGINT, on_ctrl_c)
+    try:
+        yield stop
+    finally:
+        signal.signal(signal.SIGINT, signal.default_int_handler if previous is None else previous)
+
+
 def _run(
     attempt: _Attempt,
     factory: Callable[[], HeadbandSource],
     duration: float | None,
     writer_factory: Callable[[HeadbandSource], SessionWriter] | None = None,
+    *,
+    clock: Callable[[], float] = time.time,
+    sleep: Callable[[float], None] = time.sleep,
+    read_key: Callable[[], str | None] = _read_key,
 ) -> None:
-    sup = StreamSupervisor(factory)
-    try:
-        sup.start()
-    except SourceError as exc:
-        attempt.log("connect_error", None, None, str(exc))
-        console.print(f"[red]{exc}[/red]")
-        raise typer.Exit(EXIT_CONNECT) from exc
+    sup = StreamSupervisor(factory, clock=clock)
+    with _stop_on_ctrl_c() as stop:
+        try:
+            sup.start()
+        except SourceError as exc:
+            attempt.log("connect_error", None, None, str(exc))
+            console.print(f"[red]{exc}[/red]")
+            raise typer.Exit(EXIT_CONNECT) from exc
+        assert sup.source is not None
+        device = sup.source.device
+        if stop.is_set():  # Ctrl+C while connecting: the driver only hands it over afterwards
+            console.print("Stopped before it began. Nothing was recorded.")
+            attempt.log("interrupted", None, device.name)
+            _release(attempt, sup)
+            raise typer.Exit(EXIT_INTERRUPTED)
+        timer = TimeToSignal(attempt.t0)
+        firmware = f" · fw {device.firmware}" if device.firmware else ""
+        print_banner(console, f"{device.name}{firmware} · preset {device.preset}")
+        try:
+            _show_and_record(sup, timer, duration, writer_factory, stop, clock, sleep, read_key)
+        except OSError as exc:
+            console.print(f"[red]Write error: {exc}[/red]")
+            raise typer.Exit(EXIT_WRITE) from exc
+        finally:
+            # The session is saved by now. The log comes next: the release is slow, and nothing
+            # that happens during it may cost the evidence.
+            try:
+                outcome = "no_signal" if timer.seconds is None else "signal"
+                attempt.log(outcome, timer.seconds, device.name)
+            finally:
+                _release(attempt, sup)
+
+
+def _show_and_record(
+    sup: StreamSupervisor,
+    timer: TimeToSignal,
+    duration: float | None,
+    writer_factory: Callable[[HeadbandSource], SessionWriter] | None,
+    stop: threading.Event,
+    clock: Callable[[], float],
+    sleep: Callable[[float], None],
+    read_key: Callable[[], str | None],
+) -> None:
+    """The live loop. Whatever ends it, the session is finalized before this returns."""
     assert sup.source is not None
-    timer = TimeToSignal(attempt.t0)
-    device = sup.source.device
-    firmware = f" · fw {device.firmware}" if device.firmware else ""
-    print_banner(console, f"{device.name}{firmware} · preset {device.preset}")
     writer = writer_factory(sup.source) if writer_factory else None
-    if writer is not None:
-        sup.on_gap_closed = writer.add_gap
-    guide = guide_from_env()
-    stats, open_blocks, started = LiveStats(), set[str](), time.time()
-    latest: list[RenderableType] = [_render(sup, stats, None)]
-
-    def view() -> RenderableType:
-        # Runs on Live's refresh thread, so a guide's countdown keeps moving even while a
-        # reconnect attempt blocks the loop below.
-        if guide is None:
-            return latest[0]
-        return Group(latest[0], _guide_panel(guide, time.time() - started))
-
     try:
+        if writer is not None:
+            sup.on_gap_closed = writer.add_gap
+        recording = writer.session_dir.name if writer else None
+        guide = guide_from_env()
+        stats, open_blocks, markers = LiveStats(), set[str](), 0
+        latest: list[RenderableType] = [_render(sup, stats, recording)]
+        while read_key() is not None:  # keys typed while it was connecting are not for this run
+            pass
+        started = clock()
+
+        def view() -> RenderableType:
+            # Runs on Live's refresh thread, so a guide's countdown keeps moving even while a
+            # reconnect attempt blocks the loop below.
+            if guide is None:
+                return latest[0]
+            return Group(latest[0], _guide_panel(guide, clock() - started))
+
         with Live(console=console, refresh_per_second=4, get_renderable=view) as live:
-            while duration is None or time.time() - started < duration:
+            # The time limit is checked before every poll, so no reconnect attempt begins
+            # after it has passed.
+            while not stop.is_set() and (duration is None or clock() - started < duration):
                 chunks = sup.poll()
-                now = time.time()
+                now = clock()
                 stats.add(chunks, now)
                 if (seconds := timer.observe(chunks, now)) is not None:
                     live.console.print(f"first EEG after {seconds:.1f} s")
@@ -267,42 +351,47 @@ def _run(
                     for label, offset in guide.due(now - started) if guide else []:
                         t = started + offset
                         writer.add_marker(Marker(t=t, kind="system", label=label, source="system"))
-                    if _handle_key(_read_key(), writer, open_blocks, now):
-                        break
-                elif _read_key() == "q":
+                key = read_key()
+                if key == "q":
                     break
-                latest[0] = _render(sup, stats, writer.session_dir.name if writer else None)
-                time.sleep(0.05)
-    except KeyboardInterrupt:
-        pass
-    except OSError as exc:
-        console.print(f"[red]Write error: {exc}[/red]")
-        raise typer.Exit(EXIT_WRITE) from exc
+                if writer is not None and (marker := _key_marker(key, open_blocks, now)):
+                    writer.add_marker(marker)
+                    markers += 1
+                latest[0] = _render(sup, stats, recording, markers)
+                sleep(0.05)
     finally:
-        sup.stop()
-        outcome = "no_signal" if timer.seconds is None else "signal"
-        attempt.log(outcome, timer.seconds, sup.source.device.name)
+        gap = sup.open_gap  # read before the supervisor is stopped
         if writer is not None:
-            writer.finalize()
+            if gap is not None:
+                writer.add_gap(gap)
+            writer.finalize(sup.lost_subpackets)
             console.print(f"Saved session: {writer.session_dir}")
-    if sup.state is State.RECONNECTING:
-        console.print("[yellow]Stopped while reconnecting; the open gap was not closed.[/yellow]")
+        if gap is not None:
+            console.print(
+                "[yellow]Stopped before the signal returned. The gap is saved as open.[/yellow]"
+            )
 
 
-def _handle_key(key: str | None, writer: SessionWriter, open_blocks: set[str], now: float) -> bool:
-    """Returns True when the user asked to stop."""
-    if key is None:
-        return False
-    if key == "q":
-        return True
+def _release(attempt: _Attempt, sup: StreamSupervisor) -> None:
+    """Let go of the headband. Nothing depends on how this ends."""
+    if attempt.source is SourceKind.athena:
+        console.print("Releasing the headband, about 8 s. Nothing to press.")
+    try:
+        sup.stop()
+    except Exception as exc:
+        console.print(f"[yellow]The headband was not released cleanly: {exc}[/yellow]")
+
+
+def _key_marker(key: str | None, open_blocks: set[str], now: float) -> Marker | None:
+    """The marker a key stands for, if any: space = a moment, 1-9 = start or end a block."""
     if key == " ":
-        writer.add_marker(Marker(t=now, kind="moment", label="moment", source="keyboard"))
-    elif key.isdigit() and key != "0":
+        return Marker(t=now, kind="moment", label="moment", source="keyboard")
+    if key is not None and key.isdigit() and key != "0":
         label = f"block {key}"
         kind = "block_end" if label in open_blocks else "block_start"
         open_blocks.symmetric_difference_update({label})
-        writer.add_marker(Marker(t=now, kind=kind, label=label, source="keyboard"))
-    return False
+        return Marker(t=now, kind=kind, label=label, source="keyboard")
+    return None
 
 
 @app.command()
@@ -381,6 +470,10 @@ def inspect(path: Path) -> None:
         )
         console.print(f"  {kind.value:<7} {ts.size:>9} samples  {span:8.1f} s  complete {pct}")
     console.print(f"  markers: {len(session.markers)}  gaps: {len(session.gaps)}")
+    lost: dict[str, int] | None = m.get("lost_subpackets")
+    if lost is not None:
+        counts = "  ".join(f"{kind} {n}" for kind, n in lost.items())
+        console.print(f"  subpackets lost on the headset link: {counts}")
     for g in session.gaps:
         dur = f"{g.end - g.start:.2f} s" if g.end is not None else "open"
         console.print(f"    gap {g.reason} {dur}")

@@ -26,17 +26,31 @@ from mufuse.acquisition.athena import (
     validate_preset,
 )
 from mufuse.acquisition.athena_status import firmware_from_log
+from mufuse.acquisition.loss import skipped_subpackets
 from mufuse.acquisition.timing import Retimer
-from mufuse.acquisition.types import Chunk, DeviceInfo, SourceError, StreamKind, StreamSpec
+from mufuse.acquisition.types import (
+    Chunk,
+    DeviceInfo,
+    FloatArray,
+    SourceError,
+    StreamKind,
+    StreamSpec,
+)
 from mufuse.runlog import log_path
 
-FIRMWARE_WAIT_S = 2.0  # the status reply to BrainFlow's `v6` lands shortly after connecting
+FIRMWARE_WAIT_S = 0.3  # the status reply to BrainFlow's `v6` lands shortly after connecting
+LOG_KEEP_BYTES = 1_000_000  # the debug log grows with every connection; start over above this
 
 _BF_PRESET = {
     StreamKind.EEG: BrainFlowPresets.DEFAULT_PRESET,
     StreamKind.MOTION: BrainFlowPresets.AUXILIARY_PRESET,
     StreamKind.OPTICS: BrainFlowPresets.ANCILLARY_PRESET,
 }
+
+# Reading the firmware is a nicety that must never cost a connection. BrainFlow's log file is
+# set per process and a failed redirect sticks, so it is tried once: None = not tried yet.
+_log_ok: bool | None = None
+_firmware: str | None = None  # once read, reconnects in this process skip the readout
 
 
 class BrainFlowAthena:
@@ -59,11 +73,12 @@ class BrainFlowAthena:
         self._name = device_name or "MuseS-Athena"
         self._address = mac_address
         self._board: BoardShim | None = None
-        self._rows: dict[StreamKind, tuple[int, list[int]]] = {}
+        # Per stream: timestamp row, package number row, data rows.
+        self._rows: dict[StreamKind, tuple[int, int, list[int]]] = {}
         self._retimers: dict[StreamKind, Retimer] = {}
-        self._firmware: str | None = None
+        self._lost = dict.fromkeys(ATHENA_STREAMS, 0)
+        self._last_counter: dict[StreamKind, int] = {}
         self._bf_log = log_path().parent / "brainflow.log"
-        BoardShim.set_log_level(LogLevels.LEVEL_WARN.value)
 
     @property
     def device(self) -> DeviceInfo:
@@ -72,42 +87,54 @@ class BrainFlowAthena:
             preset=self._preset,
             driver=f"brainflow-{BoardShim.get_version()}",
             address=self._address,
-            firmware=self._firmware,
+            firmware=_firmware,
         )
 
     @property
     def streams(self) -> Mapping[StreamKind, StreamSpec]:
         return ATHENA_STREAMS
 
+    @property
+    def lost_subpackets(self) -> Mapping[StreamKind, int]:
+        return dict(self._lost)
+
     def start(self) -> None:
-        for kind, bf_preset in _BF_PRESET.items():
-            descr = BoardShim.get_board_descr(ATHENA_BOARD_ID, bf_preset)
-            skip = {
-                descr[k] for k in ("package_num_channel", "timestamp_channel", "marker_channel")
-            }
-            data_rows = [r for r in range(descr["num_rows"]) if r not in skip]
-            self._rows[kind] = (descr["timestamp_channel"], data_rows)
+        global _firmware
         # BrainFlow only logs the firmware status reply at debug level, so log to a file while
         # connecting and read it back (see athena_status.py).
-        self._bf_log.parent.mkdir(parents=True, exist_ok=True)
-        offset = self._bf_log.stat().st_size if self._bf_log.exists() else 0
-        BoardShim.set_log_file(str(self._bf_log))
-        BoardShim.set_log_level(LogLevels.LEVEL_DEBUG.value)
-        board = BoardShim(ATHENA_BOARD_ID, self._params)
+        log_from = None if _firmware else _debug_log_offset(self._bf_log)
+        if log_from is None:
+            _set_log_level(LogLevels.LEVEL_WARN)
+        board: BoardShim | None = None
         try:
+            for kind, bf_preset in _BF_PRESET.items():
+                descr = BoardShim.get_board_descr(ATHENA_BOARD_ID, bf_preset)
+                skip = {
+                    descr[k] for k in ("package_num_channel", "timestamp_channel", "marker_channel")
+                }
+                data_rows = [r for r in range(descr["num_rows"]) if r not in skip]
+                self._rows[kind] = (
+                    descr["timestamp_channel"],
+                    descr["package_num_channel"],
+                    data_rows,
+                )
+            board = BoardShim(ATHENA_BOARD_ID, self._params)
             board.prepare_session()
             board.start_stream()
-            self._firmware = _wait_for_firmware(self._bf_log, offset)
-        except BrainFlowError as exc:
-            _safe_release(board)
+            if log_from is not None:
+                _firmware = _wait_for_firmware(self._bf_log, log_from)
+        except (BrainFlowError, OSError) as exc:  # OSError: the driver library did not load
+            if board is not None:
+                _safe_release(board)
             raise SourceError(
                 "Could not connect to the Muse S Athena. Check it is powered on, Bluetooth is on, "
                 f"and no other app (e.g. the Muse app) is connected. ({exc})"
             ) from exc
         finally:
-            BoardShim.set_log_level(LogLevels.LEVEL_WARN.value)
+            _set_log_level(LogLevels.LEVEL_WARN)
         self._board = board
         self._retimers = {k: Retimer(spec.sampling_rate) for k, spec in ATHENA_STREAMS.items()}
+        self._last_counter = {}
 
     def read(self) -> list[Chunk]:
         if self._board is None:
@@ -118,13 +145,22 @@ class BrainFlowAthena:
                 raw = self._board.get_board_data(preset=bf_preset)
                 if raw.shape[1] == 0:
                     continue
-                ts_row, data_rows = self._rows[kind]
+                ts_row, counter_row, data_rows = self._rows[kind]
                 # Keep every sample; arrival-time stamps are duplicated/jittery (see timing.py).
                 ts = self._retimers[kind].retime(raw[ts_row].astype(np.float64))
                 chunks.append(Chunk(kind, ts, raw[data_rows].T.astype(np.float64)))
+                self._count_lost(kind, raw, counter_row)
         except BrainFlowError as exc:
             raise SourceError(f"Lost the headband stream: {exc}") from exc
         return chunks
+
+    def _count_lost(self, kind: StreamKind, raw: FloatArray, counter_row: int) -> None:
+        """Add up subpackets that never arrived. Bookkeeping only: it can never stop a read."""
+        with contextlib.suppress(Exception):
+            counters = [int(v) & 0xFF for v in raw[counter_row]]
+            lost = skipped_subpackets(counters, self._last_counter.get(kind))
+            self._last_counter[kind] = counters[-1]
+            self._lost[kind] += lost
 
     def stop(self) -> None:
         if self._board is not None:
@@ -138,16 +174,46 @@ def _safe_release(board: BoardShim) -> None:
             action()
 
 
+def _set_log_level(level: LogLevels) -> None:
+    with contextlib.suppress(Exception):
+        BoardShim.set_log_level(level.value)
+
+
+def _debug_log_offset(log: Path) -> int | None:
+    """Turn on BrainFlow's debug log in `log`; returns where this connection's lines start.
+
+    None when the file cannot be used. Then nothing is logged at debug level (it would land on
+    the terminal) and nothing waits for the firmware.
+    """
+    global _log_ok
+    try:
+        if _log_ok is None:
+            _log_ok = False
+            log.parent.mkdir(parents=True, exist_ok=True)
+            with contextlib.suppress(OSError):
+                if log.stat().st_size > LOG_KEEP_BYTES:
+                    log.unlink()
+            BoardShim.set_log_file(str(log))
+            _log_ok = True
+        if not _log_ok:
+            return None
+        offset = log.stat().st_size if log.exists() else 0
+        BoardShim.set_log_level(LogLevels.LEVEL_DEBUG.value)
+        return offset
+    except Exception:
+        return None
+
+
 def _wait_for_firmware(log: Path, offset: int) -> str | None:
     deadline = time.monotonic() + FIRMWARE_WAIT_S
-    while True:
-        try:
+    try:
+        while True:
             with log.open("rb") as fh:
                 fh.seek(offset)
                 text = fh.read().decode("utf-8", errors="replace")
-        except OSError:
-            return None
-        firmware = firmware_from_log(text)
-        if firmware is not None or time.monotonic() > deadline:
-            return firmware
-        time.sleep(0.1)
+            firmware = firmware_from_log(text)
+            if firmware is not None or time.monotonic() >= deadline:
+                return firmware
+            time.sleep(0.1)
+    except Exception:  # an unreadable log or reply is no reason to give up a connection
+        return None
