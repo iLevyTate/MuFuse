@@ -17,19 +17,43 @@ Run with the headband on, the Muse app closed, and the PC within 2 m. Record res
 H8 is how to tune the thresholds in `src/mufuse/acquisition/signal_check.py`; its report prints each
 channel's robust spread in µV per phase.
 
-## Guided run (H4–H8, F1)
+## One sitting (all of it)
 
 ```
-uv run python scripts/hw_acceptance.py          # all of H4-H8, then F1
-uv run python scripts/hw_acceptance.py H5 H8    # just these
+uv run python scripts/hw_acceptance.py                 # the whole sitting, about 30 min
+uv run python scripts/hw_acceptance.py H5 F1           # just these
+uv run python scripts/hw_acceptance.py --resume        # only what the last run did not pass
+uv run python scripts/hw_acceptance.py --rejudge RUN   # judge saved sessions again, no headband
+uv run python scripts/hw_acceptance.py --rehearse      # the whole sitting on the simulator
 ```
 
-Each check lists what you'll do and the cue timeline, then waits for Enter. During the recording an
-orange bar under the live table shows the current instruction and a countdown; every action ("turn
-the headband OFF", "press SPACE") gets a 3-second "get ready" countdown first, and the pass rules
-allow for reaction time. Cue times, durations and pass rules live in `src/mufuse/acceptance.py`, so
-every run is the same. Verdicts are appended to `acceptance.jsonl` next to the connection log, and
-sessions are saved under `recordings/` with notes like `H5 acceptance <run id>`.
+Order: P0 (fit), H8, H6, H7, H5, F1 need hands and come first; the headband comes off in F1. Then
+H4 (10 min, worn or on the desk within 2 m), H3 (the ten connects of `h3_time_to_signal.py`;
+`--no-h3` leaves it out) and H1/H2 (`pytest -m hardware -s`) need nothing.
+
+The run shows a desk checklist and waits for one Enter. After that each check starts by itself after
+a 10 s countdown that shows the last verdict and what the next check needs. Any key pauses the
+countdown (`p` pause, `s` skip, `q` quit); `--pause` waits for Enter before every check instead. The
+countdown is also the pause the headband needs between a release and the next connect. A FAIL always
+stops and waits: `r` runs the check again, Enter goes on. Ctrl+C only stops the recording that is
+running (H7 asks for it), never the run.
+
+During a recording an orange bar under the live table shows the current instruction and a countdown;
+every action ("turn the headband OFF", "press SPACE") gets a 3-second "get ready" countdown first,
+and the pass rules allow for reaction time. Cue times, durations and pass rules live in
+`src/mufuse/acceptance.py`, so every run is the same.
+
+Every check ends as PASS, FAIL, SKIPPED or NOT RUN (no connection after three tries, or the run was
+ended first), and the exit code is 0 only when all of them passed. Each attempt is one row in
+`acceptance.jsonl` next to the connection log, saved before its verdict is shown, with the run id,
+the measures, the firmware, the package versions and the commit. Sessions are saved under
+`recordings/` with notes like `H5 acceptance <run id>`, so a FAIL can be judged again later with
+`--rejudge` (a run id, or session folders); a re-judgement is appended as its own row and nothing is
+overwritten. The last row of a check counts.
+
+`--rehearse` plays the whole sitting in real time on the simulator, with a simulated wearer on the
+headband and the keys, into scratch folders (`--out` and `MUFUSE_LOG_DIR` choose them). Its rows are
+marked `sim` and never count as hardware evidence; `--h4-seconds 30` shortens H4 for it.
 
 SC-003 asks for the gap to be *recorded accurately*, not for the headband to be off for exactly
 10 s: the gap also includes boot and reconnect time, so H5 compares the recorded gap with the hole
