@@ -23,6 +23,7 @@ from mufuse.acquisition.athena import (
     DEFAULT_PRESET,
     validate_preset,
 )
+from mufuse.acquisition.timing import Retimer
 from mufuse.acquisition.types import Chunk, DeviceInfo, SourceError, StreamKind, StreamSpec
 
 _BF_PRESET = {
@@ -53,7 +54,7 @@ class BrainFlowAthena:
         self._address = mac_address
         self._board: BoardShim | None = None
         self._rows: dict[StreamKind, tuple[int, list[int]]] = {}
-        self._last_t: dict[StreamKind, float] = {}
+        self._retimers: dict[StreamKind, Retimer] = {}
         BoardShim.set_log_level(LogLevels.LEVEL_WARN.value)
 
     @property
@@ -88,7 +89,7 @@ class BrainFlowAthena:
                 f"and no other app (e.g. the Muse app) is connected. ({exc})"
             ) from exc
         self._board = board
-        self._last_t = {}
+        self._retimers = {k: Retimer(spec.sampling_rate) for k, spec in ATHENA_STREAMS.items()}
 
     def read(self) -> list[Chunk]:
         if self._board is None:
@@ -100,9 +101,9 @@ class BrainFlowAthena:
                 if raw.shape[1] == 0:
                     continue
                 ts_row, data_rows = self._rows[kind]
-                chunk = self._monotonic_chunk(kind, raw[ts_row], raw[data_rows].T)
-                if chunk is not None:
-                    chunks.append(chunk)
+                # Keep every sample; arrival-time stamps are duplicated/jittery (see timing.py).
+                ts = self._retimers[kind].retime(raw[ts_row].astype(np.float64))
+                chunks.append(Chunk(kind, ts, raw[data_rows].T.astype(np.float64)))
         except BrainFlowError as exc:
             raise SourceError(f"Lost the headband stream: {exc}") from exc
         return chunks
@@ -111,16 +112,6 @@ class BrainFlowAthena:
         if self._board is not None:
             _safe_release(self._board)
             self._board = None
-
-    def _monotonic_chunk(self, kind: StreamKind, ts: np.ndarray, data: np.ndarray) -> Chunk | None:
-        """Drop samples whose timestamp does not advance (driver duplicates/reorders)."""
-        prev = self._last_t.get(kind, -np.inf)
-        running_max = np.maximum.accumulate(np.concatenate([[prev], ts]))[:-1]
-        keep = ts > running_max
-        if not keep.any():
-            return None
-        self._last_t[kind] = float(ts[keep][-1])
-        return Chunk(kind, ts[keep].astype(np.float64), data[keep].astype(np.float64))
 
 
 def _safe_release(board: BoardShim) -> None:
