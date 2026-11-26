@@ -19,8 +19,9 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from mufuse.acquisition.athena import ATHENA_STREAMS
-from mufuse.acquisition.signal_check import NOISY_UV, classify_channel, spread_uv
+from mufuse.acquisition.athena import ATHENA_STREAMS, preset_warning
+from mufuse.acquisition.optics import too_much_light
+from mufuse.acquisition.signal_check import FULL_SCALE_UV, NOISY_UV, classify_channel, spread_uv
 from mufuse.acquisition.simulated import CTRL_C, Wearer
 from mufuse.acquisition.types import FloatArray, StreamKind
 from mufuse.guide import READY_S, Cue, Guide, action
@@ -339,7 +340,7 @@ WINDOW_S, STEP_S = 2.0, 0.5  # same window the live view classifies
 _CHANNELS = ATHENA_STREAMS[StreamKind.EEG].channel_names[:4]
 _SENSOR = {"TP9": "left ear", "AF7": "left forehead", "AF8": "right forehead", "TP10": "right ear"}
 _EEG_HZ = ATHENA_STREAMS[StreamKind.EEG].sampling_rate
-EEG_RANGE_UV = 725.0  # the Athena's amplifier ends there: (raw - 8192) * 1450 / 16383
+EEG_RANGE_UV = FULL_SCALE_UV  # the amplifier ends there: (raw - 8192) * 1450 / 16383
 RAIL_MARGIN = 0.05  # a sample this close to either end of the range counts as railed
 RAIL_SHARE = 0.10  # share of railed samples that makes a window railed
 FLAT_PTP_UV = 2.0  # peak-to-peak below this: no signal at all
@@ -528,6 +529,9 @@ def _judge_h8(check: Check, session: LoadedSession, r: _Report) -> None:
 
 # P0: preflight -----------------------------------------------------------------------------
 
+# Judged on the level as the headset reports it. Since the battery row is corrected (BrainFlow
+# reads half of it, see athena_status.py) 20% is about two hours of use, plenty for the half-hour
+# sitting. Sessions recorded before the correction saved half the level, so for them 20% was 40%.
 BATTERY_MIN_PCT = 20.0
 STREAM_MIN_PCT = 95.0
 FIT_OK_SHARE = 0.8
@@ -547,6 +551,10 @@ def _judge_p0(check: Check, session: LoadedSession, r: _Report) -> None:
         )
     else:
         r.info(f"firmware {firmware}")
+    extra: dict[str, str] = session.manifest["device"].get("extra") or {}
+    warning = preset_warning(session.manifest["device"]["preset"], extra.get("active_preset"))
+    if warning is not None:
+        r.info(warning)
 
     # The battery level is the last optics column. It reads 0 for the first seconds.
     _, optics = session.streams.get(StreamKind.OPTICS, (np.empty(0), np.empty((0, 17))))
@@ -655,6 +663,14 @@ def _judge_f1(check: Check, session: LoadedSession, r: _Report) -> None:
         for i, value in enumerate(level):
             r.measure(f"{name}.OPT{i + 1}.median", value)
         r.info(f"{title}: " + "  ".join(f"{i + 1}:{v:.0f}" for i, v in enumerate(level)))
+    for (name, _, title), win in zip(_F1_PHASES, windows, strict=True):
+        glare = float(too_much_light(win).mean())
+        r.measure(f"{name}.too_much_light_share", glare)
+        if glare:
+            r.info(
+                f"{title}: too much light in {glare:.0%} of optics frames (an ambient row at the "
+                "20-bit ceiling, or every LED row at 0): those frames hold no data"
+            )
     head, light_1, dark, light_2 = levels
     _, all_rows = session.streams[StreamKind.OPTICS]
     if not np.ptp(all_rows[:, :16], axis=0).any():
@@ -672,9 +688,13 @@ def _judge_f1(check: Check, session: LoadedSession, r: _Report) -> None:
     ):
         r.info(f"{title}: " + "  ".join(f"{i + 1}:{d:.0f}" for i, d in enumerate(diff)))
     if not ambient:
-        # Nothing qualified. Say which of the two usual reasons it was before the order verdict.
+        # Nothing qualified. Say why before the order verdict: one light phase that never got
+        # its light, room light too dim for both, or a cover that let light through.
         rose = float((lit - head).max())
-        if rose < LIGHT_RISE:
+        short = _light_phase_short(steady, head, light_1, light_2)
+        if short is not None:
+            r.check(False, short)
+        elif rose < LIGHT_RISE:
             r.check(
                 False,
                 f"room light too dim: the rows rose only about {max(round(rose, -1), 0):.0f} "
@@ -712,6 +732,29 @@ def _judge_f1(check: Check, session: LoadedSession, r: _Report) -> None:
         r.measure(f"on_head.OPT{i + 1}.pulse_share", share)
     weakest = _rows(np.argsort(pulse)[:4])
     r.info(f"least pulse on the head: {_opt(weakest)} (ambient channels should carry no heartbeat)")
+
+
+def _light_phase_short(
+    steady: np.ndarray, head: FloatArray, light_1: FloatArray, light_2: FloatArray
+) -> str | None:
+    """When the room light lifted the steady rows in one light phase and not in the other, what
+    to say about the phase that fell short. None when both or neither rose."""
+    if not steady.any():
+        return None
+    rose_1, rose_2 = (
+        float((light - head)[steady].max()) >= LIGHT_RISE for light in (light_1, light_2)
+    )
+    if rose_1 and not rose_2:
+        return (
+            "the 'light again' phase stayed at the covered level: uncover the sensors and face "
+            "the light until it says done"
+        )
+    if rose_2 and not rose_1:
+        return (
+            "the 'room light' phase stayed at the on-head level: take the headband off and hold "
+            "the sensors facing a lamp or a window until told to cover them"
+        )
+    return None
 
 
 # The checks -----------------------------------------------------------------------------------

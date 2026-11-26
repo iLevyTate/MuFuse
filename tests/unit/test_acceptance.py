@@ -270,6 +270,18 @@ def test_p0_notes_an_unknown_or_newer_firmware_without_failing(
     assert _said(result, note, "[info]")
 
 
+def test_p0_notes_a_preset_the_headset_did_not_take(tmp_path: Path, clock: FakeClock) -> None:
+    device = replace(DEVICE, extra={"active_preset": "p1021"})
+    result = _p0(tmp_path, clock, device=device)
+    assert _ok(result)  # the streams decide; this explains them
+    assert _said(result, "the headset reports preset p1021, not the requested p1041", "[info]")
+
+
+def test_p0_says_nothing_about_a_preset_the_headset_took(tmp_path: Path, clock: FakeClock) -> None:
+    result = _p0(tmp_path, clock, device=replace(DEVICE, extra={"active_preset": "p1041"}))
+    assert not _said(result, "reports preset")
+
+
 def test_p0_fails_a_stream_well_under_its_nominal_rate(tmp_path: Path, clock: FakeClock) -> None:
     result = _p0(tmp_path, clock, lose={StreamKind.MOTION: 10})
     assert not _ok(result)
@@ -980,3 +992,69 @@ def test_an_unknown_wearer_is_refused_with_the_choices(
     monkeypatch.setenv("MUFUSE_SIM_WEARER", value)
     with pytest.raises(ValueError, match=r"P0, H8, H6, H7, H5, F1, H4.*:idle"):
         wearer_from_env()
+
+
+# The first F1 attempt of the 2026-11-26 sitting, as phase medians: room light saturated the
+# ambient rows and zeroed most LED rows, and the sensors were still covered after "light again".
+F1_FIRST_ATTEMPT = {
+    "on_head": [
+        *(239287, 211702, 617, 367, 340818, 341075, 340589, 340853),
+        *(192263, 206494, 39606, 35584, 190235, 172247, 21583, 17858),
+    ],
+    "room_light": [
+        *(84728, 0, 0, 0, 962162, 1048575, 1048575, 1048575),
+        *(30684, 0, 0, 0, 36858, 0, 0, 0),
+    ],
+    "dark": [
+        *(298831, 580973, 405, 455, 340616, 341075, 340431, 340880),
+        *(240884, 433945, 11936, 19409, 239344, 331547, 8754, 11505),
+    ],
+    "light_again": [
+        *(298500, 561002, 398, 407, 340714, 341110, 340513, 340912),
+        *(240095, 417564, 11138, 17117, 239539, 322278, 8257, 10275),
+    ],
+}
+
+
+def _phases(levels: Mapping[str, Sequence[float]]) -> EegShape:
+    """Each F1 phase at its own level per row, with a little noise."""
+    at = _at("F1")
+    order = ("on_head", "room_light", "dark", "light_again")
+
+    def shape(rel: FloatArray) -> FloatArray:
+        x = np.zeros((rel.size, 16))
+        for name in order:
+            x[rel >= at[name]] = levels[name]
+        noisy = (x > 0) & (x < 1_048_575)
+        x[noisy] += RNG.normal(0, 20, int(noisy.sum()))
+        return np.column_stack([x, np.full(rel.size, 80.0)])
+
+    return shape
+
+
+def test_f1_names_the_light_phase_that_stayed_covered(tmp_path: Path, clock: FakeClock) -> None:
+    result = _f1(tmp_path, clock, _phases(F1_FIRST_ATTEMPT))
+    assert not _ok(result)
+    assert _said(
+        result,
+        "the 'light again' phase stayed at the covered level: uncover the sensors and face the "
+        "light until it says done",
+        "[FAIL]",
+    )
+    assert not _said(result, "too dim")
+
+
+def test_f1_names_the_room_light_phase_when_it_fell_short(tmp_path: Path, clock: FakeClock) -> None:
+    levels = dict(F1_FIRST_ATTEMPT)
+    levels["room_light"], levels["light_again"] = levels["dark"], levels["room_light"]
+    result = _f1(tmp_path, clock, _phases(levels))
+    assert not _ok(result)
+    assert _said(result, "the 'room light' phase stayed at the on-head level", "[FAIL]")
+
+
+def test_f1_notes_frames_with_too_much_light(tmp_path: Path, clock: FakeClock) -> None:
+    result = _f1(tmp_path, clock, _phases(F1_FIRST_ATTEMPT))
+    assert _said(result, "room light: too much light in 100% of optics frames", "[info]")
+    assert not _said(result, "on head: too much light")
+    assert result.measures["room_light.too_much_light_share"] == 1.0
+    assert result.measures["on_head.too_much_light_share"] == 0.0
