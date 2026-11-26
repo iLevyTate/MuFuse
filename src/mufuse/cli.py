@@ -237,7 +237,9 @@ def _run(
         raise typer.Exit(EXIT_CONNECT) from exc
     assert sup.source is not None
     timer = TimeToSignal(attempt.t0)
-    print_banner(console, f"{sup.source.device.name} · preset {sup.source.device.preset}")
+    device = sup.source.device
+    firmware = f" · fw {device.firmware}" if device.firmware else ""
+    print_banner(console, f"{device.name}{firmware} · preset {device.preset}")
     writer = writer_factory(sup.source) if writer_factory else None
     if writer is not None:
         sup.on_gap_closed = writer.add_gap
@@ -365,7 +367,8 @@ def inspect(path: Path) -> None:
     status = "finalized" if session.finalized else "NOT finalized (interrupted)"
     console.print(
         f"[bold]{m['session_id']}[/bold]  {status}  device={m['device']['name']} "
-        f"preset={m['device']['preset']}  notes={m['notes']!r}"
+        f"fw={m['device'].get('firmware') or '?'}  preset={m['device']['preset']}  "
+        f"notes={m['notes']!r}"
     )
     for kind, (ts, _) in session.streams.items():
         span = ts[-1] - ts[0] if ts.size > 1 else 0.0

@@ -6,7 +6,9 @@
 from __future__ import annotations
 
 import contextlib
+import time
 from collections.abc import Mapping
+from pathlib import Path
 
 import numpy as np
 from brainflow.board_shim import (
@@ -23,8 +25,12 @@ from mufuse.acquisition.athena import (
     DEFAULT_PRESET,
     validate_preset,
 )
+from mufuse.acquisition.athena_status import firmware_from_log
 from mufuse.acquisition.timing import Retimer
 from mufuse.acquisition.types import Chunk, DeviceInfo, SourceError, StreamKind, StreamSpec
+from mufuse.runlog import log_path
+
+FIRMWARE_WAIT_S = 2.0  # the status reply to BrainFlow's `v6` lands shortly after connecting
 
 _BF_PRESET = {
     StreamKind.EEG: BrainFlowPresets.DEFAULT_PRESET,
@@ -55,6 +61,8 @@ class BrainFlowAthena:
         self._board: BoardShim | None = None
         self._rows: dict[StreamKind, tuple[int, list[int]]] = {}
         self._retimers: dict[StreamKind, Retimer] = {}
+        self._firmware: str | None = None
+        self._bf_log = log_path().parent / "brainflow.log"
         BoardShim.set_log_level(LogLevels.LEVEL_WARN.value)
 
     @property
@@ -64,6 +72,7 @@ class BrainFlowAthena:
             preset=self._preset,
             driver=f"brainflow-{BoardShim.get_version()}",
             address=self._address,
+            firmware=self._firmware,
         )
 
     @property
@@ -78,16 +87,25 @@ class BrainFlowAthena:
             }
             data_rows = [r for r in range(descr["num_rows"]) if r not in skip]
             self._rows[kind] = (descr["timestamp_channel"], data_rows)
+        # BrainFlow only logs the firmware status reply at debug level, so log to a file while
+        # connecting and read it back (see athena_status.py).
+        self._bf_log.parent.mkdir(parents=True, exist_ok=True)
+        offset = self._bf_log.stat().st_size if self._bf_log.exists() else 0
+        BoardShim.set_log_file(str(self._bf_log))
+        BoardShim.set_log_level(LogLevels.LEVEL_DEBUG.value)
         board = BoardShim(ATHENA_BOARD_ID, self._params)
         try:
             board.prepare_session()
             board.start_stream()
+            self._firmware = _wait_for_firmware(self._bf_log, offset)
         except BrainFlowError as exc:
             _safe_release(board)
             raise SourceError(
                 "Could not connect to the Muse S Athena. Check it is powered on, Bluetooth is on, "
                 f"and no other app (e.g. the Muse app) is connected. ({exc})"
             ) from exc
+        finally:
+            BoardShim.set_log_level(LogLevels.LEVEL_WARN.value)
         self._board = board
         self._retimers = {k: Retimer(spec.sampling_rate) for k, spec in ATHENA_STREAMS.items()}
 
@@ -118,3 +136,18 @@ def _safe_release(board: BoardShim) -> None:
     for action in (board.stop_stream, board.release_session):
         with contextlib.suppress(BrainFlowError):
             action()
+
+
+def _wait_for_firmware(log: Path, offset: int) -> str | None:
+    deadline = time.monotonic() + FIRMWARE_WAIT_S
+    while True:
+        try:
+            with log.open("rb") as fh:
+                fh.seek(offset)
+                text = fh.read().decode("utf-8", errors="replace")
+        except OSError:
+            return None
+        firmware = firmware_from_log(text)
+        if firmware is not None or time.monotonic() > deadline:
+            return firmware
+        time.sleep(0.1)

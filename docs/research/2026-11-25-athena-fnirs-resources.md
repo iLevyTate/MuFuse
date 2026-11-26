@@ -39,6 +39,22 @@ Date: 2026-11-25. Scope: every public resource found on the Athena's optical sen
 - Still open: optode geometry and source-detector distances (FCC 2ABZI-MS03 internal photos were
   not accessible), and the raw-count to microamp scale.
 
+### Firmware and decoder changes (checked 2026-11-26)
+
+- Newest firmware seen publicly: **3.1.29** (community reports, Oct 2026). No official firmware
+  changelog was found; Muse's 2026 announcements are app features only. No new hardware revision
+  of the MS-03 was found, so sensor placement is presumed unchanged. **UNVERIFIED beyond 3.1.29.**
+- The one documented wire change: the status/battery packet moved from 0x98 (20 B) to 0x88
+  (188-230 B) around fw 3.1.18 (OpenMuse 0.1.8 changelog; Mind Monitor 2.4.3 "Athena firmware
+  3.1.18 and greater"). EEG (256 Hz), optics (64 Hz, same wire order) and IMU are reported
+  unchanged up to 3.1.29. OpenMuse #28/#32 is a decoder framing bug, not a firmware change.
+- **BrainFlow 5.23.0 changed Athena EEG scaling** from 1650/4095 to 1450/16383 µV per count
+  (about 4.5x smaller; brainflow #855) and centres EEG on zero (#856). Verified in
+  `muse_athena_constants.h` at tags 5.22.2 vs 5.23.0/5.24.0. MuFuse requires `brainflow>=5.23`.
+- MuFuse now records the headband firmware in every session manifest (`device.firmware`, read
+  from BrainFlow's debug log of the `v6` status reply) and shows it in the CLI banner, so a
+  firmware change on our unit is visible immediately; re-run F1 if it changes.
+
 ---
 
 ## 1. Hardware facts
