@@ -36,8 +36,10 @@ Date: 2026-11-25. Scope: every public resource found on the Athena's optical sen
   tests are no longer needed to settle order. Keep one cheap on-unit check: guided **F1**
   (`scripts/hw_acceptance.py F1`) confirms OPT5-8 go dark in darkness and carry no heartbeat on
   the head. Record firmware with sessions (BrainFlow only logs the `fw` status field at debug level).
-- Still open: optode geometry and source-detector distances (FCC 2ABZI-MS03 internal photos were
-  not accessible), and the raw-count to microamp scale.
+- Still open: measured source-detector distances. The FCC filing 2ABZI-MS03 (grant 2025-03-05)
+  is public and its internal photos label the optics flex PD_LOUTER1, PD_LINNER1, a central LED,
+  PD_RINNER1, PD_ROUTER1 (see 2026-11-26-muse-docs-and-oss-survey.md); spacing from the photos is
+  an estimate, not a measurement.
 
 ### Firmware and decoder changes (checked 2026-11-26)
 
@@ -45,7 +47,7 @@ Date: 2026-11-25. Scope: every public resource found on the Athena's optical sen
   changelog was found; Muse's 2026 announcements are app features only. No new hardware revision
   of the MS-03 was found, so sensor placement is presumed unchanged. **UNVERIFIED beyond 3.1.29.**
 - The one documented wire change: the status/battery packet moved from 0x98 (20 B) to 0x88
-  (188-230 B) around fw 3.1.18 (OpenMuse 0.1.8 changelog; Mind Monitor 2.4.3 "Athena firmware
+  (a fixed 20 B; an earlier 188-230 B figure came from a framing bug) around fw 3.1.18 (OpenMuse 0.1.8 changelog; Mind Monitor 2.4.3 "Athena firmware
   3.1.18 and greater"). EEG (256 Hz), optics (64 Hz, same wire order) and IMU are reported
   unchanged up to 3.1.29. OpenMuse #28/#32 is a decoder framing bug, not a firmware change.
 - **BrainFlow 5.23.0 changed Athena EEG scaling** from 1650/4095 to 1450/16383 µV per count
@@ -94,13 +96,13 @@ Date: 2026-11-25. Scope: every public resource found on the Athena's optical sen
 | Short-separation channel? | If inner ≈ 1 cm, the inner detectors are "short-ish". They are still longer than the 8.4 mm adult optimum (Brigadoi & Cooper 2015), so they will contain some brain signal. | UNVERIFIED | See §4.3 |
 | Ambient channel | Every detector has an "Ambient" reading taken with the LEDs off (16-ch mode only) | CONSISTENT (community) | Mind Monitor FAQ; Zenodo preprint ("what the receivers record when the LEDs are all off") |
 | Units of the 20-bit value | Mind Monitor reports optics as "microamps", range "0 - 32 µA". This matches raw/32768 (2²⁰/32768 = 32). BrainFlow and muse-lsl output **raw counts** (scale 1.0). OpenMuse and Mind Monitor output raw/32768. | UNVERIFIED (Mind Monitor claim only) | Mind Monitor FAQ; BrainFlow `MUSE_ATHENA_OPTICS_SCALE_FACTOR 1.0` ([muse_athena_constants.h](https://github.com/brainflow-dev/brainflow/blob/master/src/board_controller/muse/inc/muse_athena_constants.h)); OpenMuse `OPTICS_SCALE = 1.0 / 32768.0` |
-| Effective sample rate | Nominal 64 Hz. Measured 62.7–64.2 Hz. Optical counter gaps occur because data is lost on the headset, not over the air. | VERIFIED (measured by others) | [OpenMuse validation summary](https://github.com/DominiqueMakowski/OpenMuse/blob/main/validation/new_firmware/summary.md); [muse-rs athena-protocol.md](https://github.com/eugenehp/muse-rs/blob/HEAD/docs/athena-protocol.md) ("optical [counter skips] a little more often" than EEG's ~1/140) |
+| Effective sample rate | Nominal 64 Hz. Measured 62.7–64.2 Hz. (A claim that optical counter gaps are data lost on the headset came from a battery-packet framing bug in that decoder, corrected by muse.js; BrainFlow reads that packet correctly. Our 10-minute recording on 2026-11-26 lost 0 subpackets on every stream.) | VERIFIED (measured by others) | [OpenMuse validation summary](https://github.com/DominiqueMakowski/OpenMuse/blob/main/validation/new_firmware/summary.md); [muse-rs athena-protocol.md](https://github.com/eugenehp/muse-rs/blob/HEAD/docs/athena-protocol.md) ("optical [counter skips] a little more often" than EEG's ~1/140) |
 | Placement | Forehead, in the front module above the eyebrows. OpenMuse claims inner = medial frontopolar (medial BA10) and outer = lateral frontopolar (lateral BA10). | Placement: VERIFIED (official, "frontal"). BA mapping: UNVERIFIED. | [IEEE Spectrum](https://spectrum.ieee.org/muse-headband) ("five light sensors for fNIRS measurements on the forehead"); OpenMuse `process.py` docstring |
 | LED drive current / optical power | Unknown. BrainFlow: "does not document the exact optical emitter current". | UNKNOWN | [BrainFlow SupportedBoards.rst](https://github.com/brainflow-dev/brainflow/blob/master/docs/SupportedBoards.rst) |
 | Detector type / ADC | Unknown | UNKNOWN | — |
 | Interleaving (LED multiplexing) timing within a 64 Hz frame | Unknown | UNKNOWN | — |
 | SpO₂ | Muse announced SpO₂ "rolling out for research partners" (June 2025). The algorithm is not public. | VERIFIED (official claim); method UNKNOWN | [BusinessWire 2025-06-03](https://www.businesswire.com/news/home/20250603051086/en) (search snippet only) |
-| FCC filing | Not found for MS-03. Interaxon grantee code is 2ABZI (e.g. [2ABZI-MS01](https://fccid.io/2ABZI-MS01), [2ABZI-MU03](https://fccid.io/2ABZI-MU03)). fccid.io returned 403 for the grantee listing. | UNKNOWN | Search the [FCC EAS](https://apps.fcc.gov/oetcf/eas/) by grantee 2ABZI manually. Internal photos would show optode spacing. |
+| FCC filing | **Found (2026-11-26): [2ABZI-MS03](https://fccid.io/2ABZI-MS03), grant 2025-03-05.** Internal photos label the optics flex PD_LOUTER1, PD_LINNER1, LED, PD_RINNER1, PD_ROUTER1 and the EEG flex FR_R, DRL, REF, DRL, FR_L. | VERIFIED (official filing) | [External photos](https://fccid.io/2ABZI-MS03/External-Photos/External-Photos-8088091); spacing from photos is an estimate (inner about 0.7-1 cm, outer about 3 cm), not a measurement. |
 | Teardown | None found | UNKNOWN | — |
 | InteraXon fNIRS validation paper | None found. The Muse blog cites only general EEG+fNIRS literature (Aghajani 2022). IEEE Spectrum reports no fNIRS validation, and researchers there caution about "limited channels". | Not found | IEEE Spectrum; Muse blog |
 
@@ -116,7 +118,7 @@ Preset names are **hex**: the status reply `ps` reads 4129 = 0x1021 at power-up 
 | p1044 | 8 | 8 | high | BrainFlow, AbosaSzakal, muse-rs. OpenMuse says "dim". |
 | p1045 | 8 | 4 (0x34) | low | BrainFlow, AbosaSzakal ("default in MindMonitor"), muse-rs |
 | p1046 | 8 | 4 | high | BrainFlow, AbosaSzakal, muse-rs |
-| p1034 | **4** (BrainFlow, muse-rs) vs **8** (OpenMuse) | 8 | high (BrainFlow) | Conflict on EEG count. muse-rs measured 4 ch. |
+| p1034 | **4** (BrainFlow, muse-rs) vs **8** (OpenMuse) | 8 | high (BrainFlow) | Resolved 2026-11-26: 4 EEG, 8 optics, high power (Muse's own preset list); OpenMuse is wrong. |
 | p1035 | 4 | 4 | low (BrainFlow) | BrainFlow, OpenMuse, muse-rs |
 | p1031/1032, p1033, p1036, p1025–p102A | see muse-rs | 16/8/4 | n/a | muse-rs only (measured) |
 | p20/p21/p50/p51/p60/p61 | 4 | none on Athena (OpenMuse; muse-rs for p21) | — | BrainFlow docs list "optics data" for p50/p51/p60/p61, but OpenMuse and muse-rs saw no optics |
@@ -416,7 +418,7 @@ General guidance:
    - View the emitter through a phone camera: 660 nm is visibly red and 850 nm is invisible to the eye.
    - Breath-hold ΔOD sign and size per wavelength.
    - If available, narrow band-pass filters at 660/730/850 nm.
-2. **Source–detector distances.** No published or measured value exists. Measure optode centres directly on the headband pod with calipers or a macro photo, then calibrate against the Valsalva inner/outer response ratio. Pursue the FCC internal photos (grantee 2ABZI; MS-03 filing not found).
+2. **Source–detector distances.** No published or measured value exists. Measure optode centres directly on the headband pod with calipers or a macro photo, then calibrate against the Valsalva inner/outer response ratio. The FCC internal photos (2ABZI-MS03) show the layout but not distances.
 3. **Is the inner pair usable as a short-separation regressor?** It is ~1 cm (claimed), longer than the 8.4 mm optimum.
 4. **Low vs high power.** Is it only LED current? Does it change gain or integration time? Measure DC level, saturation headroom and pulsatile SNR in p1041 vs p1042.
 5. **Do 4/8-ch modes really lack ambient?** Does p1045 (Mind Monitor default) use ambient-corrected values internally?
@@ -440,3 +442,17 @@ General guidance:
   6. Regress inner channels (or global and PPG nuisance signals) out of outer channels.
   7. Gate with SCI/PSP plus the HbO/HbR anticorrelation SQI.
 - If you reuse the OpenMuse code, avoid its ln/log10 mismatch.
+
+## Update 2026-11-26
+
+- Units: Muse's own SDK definitions give optics in microamps; Mind Monitor's raw/32768 (0-32 µA)
+  matches. BrainFlow still reports raw 20-bit counts.
+- EEG full scale ±725 µV is confirmed by the official product page ("725 µV AC signal").
+- In BrainFlow counts the ambient rows sit on a dark pedestal of about 338k on the head (the
+  "about 10 in darkness" of raw/32768 above); covered they stay there, in room light they rise,
+  and in bright light they reach the 20-bit ceiling while every LED row reads exactly 0. That
+  zeroing suggests the headset already subtracts ambient light: never subtract it again.
+- On the head every detector shows the heartbeat (the 0.7-3 Hz peak held 75-92% of the 0.3-8 Hz
+  power over 10 s windows in a 10-minute recording); off the head it does not.
+- F1 confirmed OPT5-8 as the ambient rows on firmware 3.1.31.
+- Full survey and sources: [2026-11-26-muse-docs-and-oss-survey.md](2026-11-26-muse-docs-and-oss-survey.md).
