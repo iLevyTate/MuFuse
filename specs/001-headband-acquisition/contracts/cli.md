@@ -12,4 +12,8 @@ released (about 8 s on the real device). Ctrl+C never interrupts either step, an
 Ctrl+C once the live view is up exits 0. Ctrl+C while still connecting releases the headband, records nothing and
 exits 130. If the recording stops before the signal has returned from a drop, the gap is written with `end: null`.
 
+Before it connects to the headband, `stream` and `record` print one line that says so and how long it usually takes
+(about 5 s, up to 20 s if the headband is not found). The simulator connects at once and prints no such line, unless it
+plays a rehearsed wearer with the headband's waits.
+
 Output is UTF-8 on every stream, also when piped or redirected.

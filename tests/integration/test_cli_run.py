@@ -119,7 +119,37 @@ def test_simulated_source_does_not_announce_a_slow_release(
     tmp_path: Path, clock: FakeClock, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _record(tmp_path, clock, lambda: Sim(clock), 0.5)
-    assert "Releasing the headband" not in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "Releasing the headband" not in out
+    assert "Connecting to the headband" not in out
+
+
+def test_the_wait_for_the_connection_is_announced(
+    tmp_path: Path, clock: FakeClock, capsys: pytest.CaptureFixture[str]
+) -> None:
+    said: list[str] = []
+
+    class SlowToConnect(Sim):
+        def start(self) -> None:
+            said.append(capsys.readouterr().out)  # what is on screen while it connects
+            super().start()
+
+    _record(tmp_path, clock, lambda: SlowToConnect(clock), 0.5, source=SourceKind.athena)
+    assert "Connecting to the headband: usually about 5 s" in said[0]
+    assert "Nothing to press" in said[0]
+
+
+def test_a_rehearsed_check_announces_its_waits_like_the_headband(
+    tmp_path: Path,
+    clock: FakeClock,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MUFUSE_SIM_WEARER", "H8")  # its connect and release take as long
+    _record(tmp_path, clock, lambda: Sim(clock), 0.5)
+    out = capsys.readouterr().out
+    assert out.index("Connecting to the headband") < out.index("Saved session")
+    assert out.index("Saved session") < out.index("Releasing the headband")
 
 
 def test_ctrl_c_stops_the_recording_and_saves_it(tmp_path: Path, clock: FakeClock) -> None:

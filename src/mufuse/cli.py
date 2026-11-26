@@ -203,6 +203,12 @@ class _Attempt:
             t0 = time.time()
         return cls(command, source, preset, t0)
 
+    @property
+    def slow(self) -> bool:
+        """The headband takes seconds to connect and to let go, and so does a rehearsed one:
+        both waits are announced, so the screen never stands still without a reason."""
+        return self.source is SourceKind.athena or bool(os.environ.get("MUFUSE_SIM_WEARER"))
+
     def log(
         self, outcome: str, seconds: float | None, device: str | None, error: str | None = None
     ) -> None:
@@ -287,6 +293,11 @@ def _run(
 ) -> None:
     sup = StreamSupervisor(factory, clock=clock)
     with _stop_on_ctrl_c() as stop:
+        if attempt.slow:
+            console.print(
+                "Connecting to the headband: usually about 5 s, up to 20 s if it is not found. "
+                "Nothing to press."
+            )
         try:
             sup.start()
         except SourceError as exc:
@@ -387,7 +398,7 @@ def _show_and_record(
 
 def _release(attempt: _Attempt, sup: StreamSupervisor) -> None:
     """Let go of the headband. Nothing depends on how this ends."""
-    if attempt.source is SourceKind.athena:
+    if attempt.slow:
         console.print("Releasing the headband, about 8 s. Nothing to press.")
     try:
         sup.stop()
