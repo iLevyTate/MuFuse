@@ -1,7 +1,13 @@
 [project]
 name = "mufuse"
 version = "0.1.0"
-description = "Local-first brain-state self-awareness companion for the Muse S Athena"
+description = "Punk EEG. Local-first, open-source stack for Muse S Athena: stream EEG, fNIRS, HR, and motion, spot state shifts, and journal on your own hardware."
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = [
+    "eeg", "fnirs", "bci", "brain-computer-interface", "brainflow", "local-first",
+    "open-science", "quantified-self", "python", "muse-s",
+]
 readme = "README.md"
 authors = [
     { name = "Levy Tate", email = "78818969+iLevyTate@users.noreply.github.com" }
@@ -16,6 +22,10 @@ dependencies = [
     "scipy>=1.18.1",
     "typer>=0.29.2",
 ]
+
+[project.urls]
+Repository = "https://github.com/iLevyTate/MuFuse"
+Roadmap = "https://github.com/iLevyTate/MuFuse/blob/main/docs/ROADMAP.md"
 
 [project.scripts]
 mufuse = "mufuse.cli:app"

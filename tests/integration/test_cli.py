@@ -41,3 +41,9 @@ def test_play_requires_path() -> None:
 def test_inspect_unreadable(tmp_path: Path) -> None:
     result = runner.invoke(app, ["inspect", str(tmp_path)])
     assert result.exit_code == EXIT_UNREADABLE
+
+
+def test_piped_output_has_no_banner() -> None:
+    result = runner.invoke(app, ["stream", "--source", "sim", "--duration", "0.2"])
+    assert result.exit_code == 0, result.output
+    assert "Punk EEG." not in result.output
