@@ -1,8 +1,7 @@
-"""MuFuse command-line interface: devices / stream / record / inspect."""
+"""MuFuse command-line interface: devices / stream / record / inspect / hardware-test."""
 
 from __future__ import annotations
 
-import sys
 import time
 from collections import deque
 from collections.abc import Callable
@@ -23,6 +22,11 @@ from mufuse.acquisition.supervisor import State, StreamSupervisor
 from mufuse.acquisition.types import Chunk, SourceError, StreamKind
 from mufuse.banner import print_banner
 from mufuse.config import load_config, save_config
+from mufuse.hwtest.checks import CHECK_ORDER, Timings
+from mufuse.hwtest.operator import HumanOperator
+from mufuse.hwtest.runner import HardwareTest
+from mufuse.hwtest.simulated import simulated_bench
+from mufuse.keys import KeyPoller
 from mufuse.recording.format import Marker
 from mufuse.recording.reader import load_session
 from mufuse.recording.writer import SessionWriter
@@ -33,6 +37,7 @@ app = typer.Typer(
 console = Console()
 
 EXIT_BAD_ARGS, EXIT_NONE_FOUND, EXIT_CONNECT, EXIT_WRITE, EXIT_UNREADABLE = 2, 3, 4, 5, 6
+EXIT_CHECKS_FAILED, EXIT_ABORTED = 7, 130
 WINDOW_S = 2.0
 
 
@@ -52,7 +57,12 @@ DurationOpt = Annotated[float | None, typer.Option(help="Stop after N seconds")]
 
 
 def _source_factory(
-    source: SourceKind, device: str | None, preset: str, play: Path | None
+    source: SourceKind,
+    device: str | None,
+    preset: str,
+    play: Path | None,
+    *,
+    read_firmware: bool = False,
 ) -> Callable[[], HeadbandSource]:
     try:
         validate_preset(preset)
@@ -73,7 +83,29 @@ def _source_factory(
     from mufuse.acquisition.brainflow_athena import BrainFlowAthena
 
     name = device or _remembered_or_scanned_device()
-    return lambda: BrainFlowAthena(device_name=name, preset=preset)
+    firmware, extra = _read_firmware(name) if read_firmware else (None, {})
+    return lambda: BrainFlowAthena(
+        device_name=name, preset=preset, firmware=firmware, device_extra=extra
+    )
+
+
+def _read_firmware(name: str | None) -> tuple[str | None, dict[str, str]]:  # pragma: no cover
+    """Best effort: a failure only means the recording is saved without the version."""
+    from mufuse.acquisition.discovery import read_device_info
+    from mufuse.acquisition.muse_control import DeviceInfoError, split_device_info
+
+    config = load_config()
+    address = config.last_device_address if name and name == config.last_device_name else None
+    if name is None and address is None:
+        return None, {}
+    console.print("Reading the headband firmware version…")
+    try:
+        firmware, extra = split_device_info(read_device_info(name=name, address=address))
+    except DeviceInfoError as exc:
+        console.print(f"[yellow]Could not read the firmware version ({exc}); continuing.[/yellow]")
+        return None, {}
+    console.print(f"Firmware {firmware}")
+    return firmware, extra
 
 
 def _remembered_or_scanned_device() -> str | None:
@@ -141,15 +173,6 @@ def _render(sup: StreamSupervisor, stats: LiveStats, recording: str | None) -> T
     return table
 
 
-def _read_key() -> str | None:
-    if sys.platform == "win32":
-        import msvcrt
-
-        if msvcrt.kbhit():
-            return msvcrt.getwch()
-    return None
-
-
 def _run(
     factory: Callable[[], HeadbandSource],
     duration: float | None,
@@ -168,16 +191,19 @@ def _run(
         sup.on_gap_closed = writer.add_gap
     stats, open_blocks, started = LiveStats(), set[str](), time.time()
     try:
-        with Live(_render(sup, stats, None), console=console, refresh_per_second=4) as live:
+        with (
+            KeyPoller() as keys,
+            Live(_render(sup, stats, None), console=console, refresh_per_second=4) as live,
+        ):
             while duration is None or time.time() - started < duration:
                 chunks = sup.poll()
                 now = time.time()
                 stats.add(chunks, now)
                 if writer is not None:
                     writer.write(chunks)
-                    if _handle_key(_read_key(), writer, open_blocks, now):
+                    if _handle_key(keys.poll(), writer, open_blocks, now):
                         break
-                elif _read_key() == "q":
+                elif keys.poll() == "q":
                     break
                 live.update(_render(sup, stats, writer.session_dir.name if writer else None))
                 time.sleep(0.05)
@@ -248,9 +274,12 @@ def record(
     duration: DurationOpt = None,
     notes: Annotated[str, typer.Option(help="What you are doing")] = "",
     out: Annotated[Path, typer.Option(help="Recordings folder")] = Path("recordings"),
+    firmware: Annotated[
+        bool, typer.Option(help="Read the headband firmware version first (a few seconds)")
+    ] = True,
 ) -> None:
     """Record a session with keyboard markers."""
-    factory = _source_factory(source, device, preset, play)
+    factory = _source_factory(source, device, preset, play, read_firmware=firmware)
     _run(
         factory,
         duration,
@@ -286,3 +315,54 @@ def inspect(path: Path) -> None:
     for g in session.gaps:
         dur = f"{g.end - g.start:.2f} s" if g.end is not None else "open"
         console.print(f"    gap {g.reason} {dur}")
+
+
+def hwtest_timings(quick: bool) -> Timings:
+    return Timings.practice() if quick else Timings()
+
+
+@app.command("hardware-test")
+def hardware_test(
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Preview the steps with a simulated headband")
+    ] = False,
+    quick: Annotated[
+        bool,
+        typer.Option("--quick", help="Shortened practice run; not valid as the acceptance record"),
+    ] = False,
+    only: Annotated[
+        str | None,
+        typer.Option(help=f"Run only these checks, comma-separated: {', '.join(CHECK_ORDER)}"),
+    ] = None,
+    preset: PresetOpt = DEFAULT_PRESET,
+    out: Annotated[Path, typer.Option(help="Where reports and test recordings go")] = Path(
+        "recordings"
+    )
+    / "hardware-tests",
+) -> None:
+    """Guided headband test: tells you what to do, checks the results, writes a report."""
+    try:
+        validate_preset(preset)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(EXIT_BAD_ARGS) from exc
+    selected = {name.strip() for name in only.split(",") if name.strip()} if only else None
+    if dry_run:
+        bench = simulated_bench(console)
+    else:  # pragma: no cover - needs the headband
+        from mufuse.hwtest.bench import athena_bench
+
+        bench = athena_bench(HumanOperator(console), preset)
+    try:
+        test = HardwareTest(
+            bench, out, timings=hwtest_timings(quick), only=selected, practice=quick
+        )
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(EXIT_BAD_ARGS) from exc
+    print_banner(console, "Guided hardware test")
+    report = test.run()
+    if report.aborted:
+        raise typer.Exit(EXIT_ABORTED)
+    if not report.passed:
+        raise typer.Exit(EXIT_CHECKS_FAILED)

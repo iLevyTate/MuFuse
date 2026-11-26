@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
-from mufuse.cli import EXIT_BAD_ARGS, EXIT_UNREADABLE, app
+from mufuse.cli import EXIT_BAD_ARGS, EXIT_CHECKS_FAILED, EXIT_UNREADABLE, app
+from tests.conftest import FAST_TIMINGS
 
 runner = CliRunner()
 
@@ -41,6 +43,36 @@ def test_play_requires_path() -> None:
 def test_inspect_unreadable(tmp_path: Path) -> None:
     result = runner.invoke(app, ["inspect", str(tmp_path)])
     assert result.exit_code == EXIT_UNREADABLE
+
+
+def test_hardware_test_dry_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("mufuse.cli.hwtest_timings", lambda quick: FAST_TIMINGS)
+    result = runner.invoke(
+        app, ["hardware-test", "--dry-run", "--only", "find,firmware", "--out", str(tmp_path)]
+    )
+    assert result.exit_code == 0, result.output
+    assert "report.md" in result.output
+    assert "2 of 2 checks passed" in result.output
+
+
+def test_hardware_test_reports_failures_in_exit_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mufuse.hwtest import simulated
+
+    real_bench = simulated.simulated_bench
+    monkeypatch.setattr("mufuse.cli.hwtest_timings", lambda quick: FAST_TIMINGS)
+    monkeypatch.setattr(
+        "mufuse.cli.simulated_bench", lambda console: real_bench(console, devices=[])
+    )
+    result = runner.invoke(app, ["hardware-test", "--dry-run", "--out", str(tmp_path)])
+    assert result.exit_code == EXIT_CHECKS_FAILED, result.output
+
+
+def test_hardware_test_rejects_unknown_check() -> None:
+    result = runner.invoke(app, ["hardware-test", "--dry-run", "--only", "bogus"])
+    assert result.exit_code == EXIT_BAD_ARGS
+    assert "interrupt" in result.output  # lists the valid names
 
 
 def test_piped_output_has_no_banner() -> None:

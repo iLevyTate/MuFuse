@@ -1,4 +1,7 @@
-"""Real-headband acceptance tests. Run with the Muse S Athena on and the Muse app closed:
+"""Quick automatic checks against the real headband (no directions needed).
+
+The full acceptance test is guided: `uv run mufuse hardware-test` (see README.md here).
+Run these with the Muse S Athena on and the Muse app closed:
 
 uv run pytest -m hardware -s
 """
@@ -11,7 +14,7 @@ import pytest
 
 from mufuse.acquisition.athena import ATHENA_STREAMS
 from mufuse.acquisition.brainflow_athena import BrainFlowAthena
-from mufuse.acquisition.discovery import scan_for_muse
+from mufuse.acquisition.discovery import read_device_info, scan_for_muse
 from mufuse.acquisition.types import StreamKind
 
 pytestmark = pytest.mark.hardware
@@ -21,6 +24,14 @@ def test_headband_is_discoverable() -> None:
     found = scan_for_muse(timeout_s=8.0)
     assert found, "No Muse found — powered on? Muse app closed?"
     print(f"found: {found}")
+
+
+def test_firmware_version_is_readable() -> None:
+    found = scan_for_muse(timeout_s=8.0)
+    assert found, "No Muse found — powered on? Muse app closed?"
+    info = read_device_info(name=found[0].name, address=found[0].address)
+    print(f"device info: {info}")
+    assert info["fw"]
 
 
 def test_streams_all_signals_for_30_seconds() -> None:

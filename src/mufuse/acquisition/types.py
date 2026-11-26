@@ -62,5 +62,14 @@ class DeviceInfo:
     extra: dict[str, str] = field(default_factory=dict[str, str])
 
 
+@dataclass(frozen=True)
+class FoundDevice:
+    """A headband seen in a Bluetooth scan."""
+
+    name: str
+    address: str
+    rssi: int
+
+
 class SourceError(RuntimeError):
     """Raised when a source cannot connect or loses the device unrecoverably."""

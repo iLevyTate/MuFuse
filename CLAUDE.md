@@ -10,6 +10,8 @@ uv run ruff format && uv run ruff check   # format + lint
 uv run pyright                            # strict types on src/
 uv run pytest -m "not hardware"           # CI suite (no headband)
 uv run pytest -m hardware -s              # needs headband on, Muse app closed
+uv run mufuse hardware-test               # guided acceptance run with the headband (report.md)
+uv run mufuse hardware-test --dry-run --quick   # same flow, simulated headband and person
 uv run mufuse stream --source sim         # live view without hardware
 ```
 
@@ -26,7 +28,12 @@ uv run mufuse stream --source sim         # live view without hardware
 - `acquisition/timing.py` — `Retimer`: BrainFlow stamps arrival time (~24% duplicate EEG stamps);
   never drop samples, retime them. Gaps > 0.25 s are preserved.
 - `acquisition/supervisor.py` — stall (3 s) detection, backoff reconnect, explicit gaps.
+- `acquisition/muse_control.py` — control-channel framing; firmware is read over BLE ("v6") before
+  BrainFlow connects (BrainFlow doesn't report it) and stored in the manifest.
 - `recording/` — append-only float64 LE files + JSON manifest + JSONL markers/gaps (crash-safe).
+- `hwtest/` — guided hardware test: `runner.py` steps + directions, `checks.py` grading against
+  spec 001 success criteria, `background.py` acquisition thread, `simulated.py` dry-run headband
+  and person (exercised end to end in CI).
 - `cli.py` — `devices / stream / record / inspect`; `banner.py` — header shown only on a TTY.
 
 ## Gotchas

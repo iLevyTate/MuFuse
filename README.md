@@ -79,15 +79,28 @@ uv run mufuse inspect recordings/<session_id>
 ```
 
 While recording: `space` drops a moment marker, `1`–`9` start/end numbered blocks, `q` stops.
+Before connecting, `record` reads the headband's firmware version and saves it with the session
+(`--no-firmware` skips this).
 Recordings stay in `recordings/` on your machine (git-ignored) in an open format described in
 [`specs/001-headband-acquisition/contracts/recording-format.md`](specs/001-headband-acquisition/contracts/recording-format.md).
+
+## Testing with the headband
+
+```bash
+uv run mufuse hardware-test --dry-run --quick   # preview the steps, no headband needed
+uv run mufuse hardware-test                     # guided acceptance test, about 15 minutes
+```
+
+The test tells you what to do at each step (blink, press SPACE, switch the headband off and
+on), grades every result against the spec and saves a report to paste into the pull request.
+Details: [`tests/hardware/README.md`](tests/hardware/README.md).
 
 ## Development
 
 ```bash
 uv run ruff format && uv run ruff check && uv run pyright
 uv run pytest -m "not hardware"       # CI suite, no headband needed
-uv run pytest -m hardware -s          # with the headband on (see tests/hardware/README.md)
+uv run pytest -m hardware -s          # quick automatic headband checks (see tests/hardware/README.md)
 ```
 
 Features are built with [Spec Kit](https://github.com/github/spec-kit) (`/speckit-specify` →

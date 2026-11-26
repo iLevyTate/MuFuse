@@ -42,6 +42,8 @@ class BrainFlowAthena:
         preset: str = DEFAULT_PRESET,
         low_latency: bool = True,
         timeout_s: int = 15,
+        firmware: str | None = None,
+        device_extra: Mapping[str, str] | None = None,
     ) -> None:
         self._preset = validate_preset(preset)
         self._params = BrainFlowInputParams()
@@ -52,6 +54,8 @@ class BrainFlowAthena:
         self._params.other_info = f"preset={self._preset};low_latency={latency}"
         self._name = device_name or "MuseS-Athena"
         self._address = mac_address
+        self._firmware = firmware  # read beforehand over BLE; BrainFlow does not report it
+        self._extra = dict(device_extra or {})
         self._board: BoardShim | None = None
         self._rows: dict[StreamKind, tuple[int, list[int]]] = {}
         self._retimers: dict[StreamKind, Retimer] = {}
@@ -64,6 +68,8 @@ class BrainFlowAthena:
             preset=self._preset,
             driver=f"brainflow-{BoardShim.get_version()}",
             address=self._address,
+            firmware=self._firmware,
+            extra=dict(self._extra),
         )
 
     @property
