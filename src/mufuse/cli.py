@@ -79,27 +79,39 @@ def _main() -> None:  # pyright: ignore[reportUnusedFunction]
 
 def _source_factory(
     source: SourceKind, device: str | None, preset: str, play: Path | None
-) -> Callable[[], HeadbandSource]:
+) -> tuple[Callable[[], HeadbandSource], Callable[[], str | None]]:
+    """How to connect to the chosen source, and where key presses come from while it runs."""
     try:
         validate_preset(preset)
     except ValueError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(EXIT_BAD_ARGS) from exc
     if source is SourceKind.sim:
-        from mufuse.acquisition.simulated import SimulatedAthena
+        from mufuse.acceptance import wearer_from_env
+        from mufuse.acquisition.simulated import Rehearsal, SimulatedAthena
 
-        return lambda: SimulatedAthena(preset=preset)
+        try:
+            wearer = wearer_from_env()
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/red]")
+            raise typer.Exit(EXIT_BAD_ARGS) from exc
+        if wearer is None:
+            return (lambda: SimulatedAthena(preset=preset)), _read_key
+        # A hardware check rehearsed without the headband: the scripted wearer presses the
+        # keys, and the real keyboard still works.
+        rehearsal = Rehearsal(wearer, preset=preset)
+        return rehearsal.source, lambda: rehearsal.read_key() or _read_key()
     if source is SourceKind.play:
         if play is None:
             console.print("[red]--play PATH is required with --source play[/red]")
             raise typer.Exit(EXIT_BAD_ARGS)
         from mufuse.acquisition.playback import PlaybackSource
 
-        return lambda: PlaybackSource(play)
+        return (lambda: PlaybackSource(play)), _read_key
     from mufuse.acquisition.brainflow_athena import BrainFlowAthena
 
     name = device or _remembered_or_scanned_device()
-    return lambda: BrainFlowAthena(device_name=name, preset=preset)
+    return (lambda: BrainFlowAthena(device_name=name, preset=preset)), _read_key
 
 
 def _remembered_or_scanned_device() -> str | None:
@@ -420,7 +432,8 @@ def stream(
 ) -> None:
     """Show live signal from the headband (q or Ctrl+C to stop)."""
     attempt = _Attempt.begin("stream", source, preset)
-    _run(attempt, _source_factory(source, device, preset, play), duration)
+    factory, read_key = _source_factory(source, device, preset, play)
+    _run(attempt, factory, duration, read_key=read_key)
 
 
 @app.command()
@@ -435,12 +448,13 @@ def record(
 ) -> None:
     """Record a session with keyboard markers."""
     attempt = _Attempt.begin("record", source, preset)
-    factory = _source_factory(source, device, preset, play)
+    factory, read_key = _source_factory(source, device, preset, play)
     _run(
         attempt,
         factory,
         duration,
         lambda src: SessionWriter.create(out, src.device, src.streams, notes=notes),
+        read_key=read_key,
     )
 
 

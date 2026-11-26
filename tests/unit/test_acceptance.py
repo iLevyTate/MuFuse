@@ -8,9 +8,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from mufuse.acceptance import CHECKS, Result
+from mufuse.acceptance import BOOT_S, CHECKS, Result, wearer_for, wearer_from_env
 from mufuse.acquisition.athena import ATHENA_STREAMS
 from mufuse.acquisition.signal_check import classify_channel
+from mufuse.acquisition.simulated import CTRL_C, Wearer
 from mufuse.acquisition.types import Chunk, DeviceInfo, FloatArray, StreamKind
 from mufuse.guide import READY_S
 from mufuse.recording.format import Gap, Marker
@@ -699,3 +700,46 @@ def test_f1_fails_a_recording_that_stopped_before_the_last_phase(
 ) -> None:
     session = _record(tmp_path, clock, [(0, 60)], optics=_f1_optics(), markers=_cue_markers("F1"))
     assert not _ok(CHECKS["F1"].evaluate(session))
+
+
+# The simulated wearer's script ------------------------------------------------------------
+
+
+def test_the_script_for_a_check_follows_its_cues_a_reaction_late() -> None:
+    h8 = wearer_for(CHECKS["H8"], react=1.0)
+    assert h8.lifted == ((16.0, 26.0, "TP9"),)
+    assert h8.clench == ((36.0, 44.0),)
+    assert h8.blinks == ((51.0, 61.0),)
+    assert wearer_for(CHECKS["H6"], react=0.5).keys == ((10.5, " "), (18.5, " "), (26.5, " "))
+    assert wearer_for(CHECKS["H7"], react=3.0).keys == ((18.0, CTRL_C),)
+    assert wearer_for(CHECKS["H5"], react=1.0).off == ((21.0, 31.0 + BOOT_S),)
+    assert wearer_for(CHECKS["F1"], react=2.0).optics == (
+        (32.0, "light"),
+        (57.0, "covered"),
+        (82.0, "light"),
+    )
+    assert wearer_for(CHECKS["P0"]).lifted == ((0.0, 16.0, "TP9"),)  # adjusting, then still
+    assert wearer_for(CHECKS["H4"]) == Wearer()  # nothing to do
+
+
+@pytest.mark.parametrize("check_id", list(CHECKS))
+def test_an_idle_wearer_keeps_the_headband_on_and_does_nothing(check_id: str) -> None:
+    assert wearer_for(CHECKS[check_id], idle=True) == Wearer()
+
+
+def test_the_wearer_is_chosen_by_an_environment_variable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("MUFUSE_SIM_WEARER", raising=False)
+    assert wearer_from_env() is None
+    monkeypatch.setenv("MUFUSE_SIM_WEARER", "h8")
+    assert wearer_from_env() == wearer_for(CHECKS["H8"])
+    monkeypatch.setenv("MUFUSE_SIM_WEARER", "H5:idle")
+    assert wearer_from_env() == Wearer()
+
+
+@pytest.mark.parametrize("value", ["H9", "H8:asleep", ":idle"])
+def test_an_unknown_wearer_is_refused_with_the_choices(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("MUFUSE_SIM_WEARER", value)
+    with pytest.raises(ValueError, match=r"P0, H8, H6, H7, H5, F1, H4.*:idle"):
+        wearer_from_env()

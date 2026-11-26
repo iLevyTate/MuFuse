@@ -11,6 +11,7 @@ failed can be judged again later from what was saved, without the headband.
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -19,6 +20,7 @@ import numpy as np
 
 from mufuse.acquisition.athena import ATHENA_STREAMS
 from mufuse.acquisition.signal_check import NOISY_UV, classify_channel, spread_uv
+from mufuse.acquisition.simulated import CTRL_C, Wearer
 from mufuse.acquisition.types import FloatArray, StreamKind
 from mufuse.guide import READY_S, Cue, Guide, action
 from mufuse.recording.format import Gap
@@ -794,3 +796,57 @@ CHECKS: dict[str, Check] = {
         ),
     )
 }
+
+
+# Rehearsal: a simulated wearer for each check ---------------------------------------------
+
+BOOT_S = 3.0  # from the power button to a headband that can be found: a guess, not measured
+
+
+def wearer_for(check: Check, *, react: float = 1.0, idle: bool = False) -> Wearer:
+    """The script of a simulated wearer who does what `check` asks, `react` seconds after each
+    cue. An idle wearer keeps the headband on and does nothing at all."""
+    if idle:
+        return Wearer()
+
+    def at(label: str) -> float:
+        return check.at(label) + react
+
+    if check.id == "P0":  # still adjusting until told to sit still
+        return Wearer(lifted=((0.0, at("still"), "TP9"),))
+    if check.id == "H8":
+        return Wearer(
+            lifted=((at("lift_tp9"), at("replace"), "TP9"),),
+            clench=((at("clench"), at("relax_jaw")),),
+            blinks=((at("blink"), at("end")),),
+        )
+    if check.id == "H6":
+        return Wearer(keys=tuple((c.at + react, " ") for c in check.cues if c.marker))
+    if check.id == "H7":
+        return Wearer(keys=((at("ctrl_c"), CTRL_C),))
+    if check.id == "H5":
+        return Wearer(off=((at("power_off"), at("power_on") + BOOT_S),))
+    if check.id == "F1":
+        return Wearer(
+            optics=(
+                (at("room_light"), "light"),
+                (at("dark"), "covered"),
+                (at("light_again"), "light"),
+            )
+        )
+    return Wearer()  # H4: nothing to do
+
+
+def wearer_from_env() -> Wearer | None:
+    """The simulated wearer chosen in MUFUSE_SIM_WEARER, if any: a check id for a wearer who
+    follows that check, or the id and ":idle" for one who does nothing."""
+    raw = os.environ.get("MUFUSE_SIM_WEARER", "").strip()
+    if not raw:
+        return None
+    check_id, _, variant = raw.upper().partition(":")
+    if check_id not in CHECKS or variant not in ("", "IDLE"):
+        raise ValueError(
+            f"MUFUSE_SIM_WEARER={raw!r} is not a rehearsal. Use one of {', '.join(CHECKS)}, "
+            "or add :idle for a wearer who does nothing, e.g. H8:idle"
+        )
+    return wearer_for(CHECKS[check_id], idle=variant == "IDLE")
