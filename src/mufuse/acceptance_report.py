@@ -36,7 +36,6 @@ PASS, FAIL, SKIPPED, NOT_RUN = "PASS", "FAIL", "SKIPPED", "NOT RUN"
 REASONS = (
     "skipped at the keyboard",
     "the run was ended before this check",
-    "SPACE presses are only read on Windows; H6 needs a Windows terminal",
     "the hardware tests need the real headband",
     "no connection in 3 tries. Is the headband switched on? Is the Muse app on the phone closed?",
 )

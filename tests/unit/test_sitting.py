@@ -174,17 +174,12 @@ def test_h4_seconds_shortens_h4_and_nothing_else() -> None:
     assert short["H5"].check is CHECKS["H5"]
 
 
-def test_h6_is_not_run_where_the_keys_cannot_be_read() -> None:
-    steps = plan([])
-    assert settled(steps, rehearse=False, platform="win32") == {}
-    elsewhere = settled(steps, rehearse=False, platform="linux")
-    assert list(elsewhere) == ["H6"]
-    assert elsewhere["H6"].outcome == NOT_RUN
-    assert "SPACE" in elsewhere["H6"].lines[0]
+def test_every_check_runs_on_the_headband_whatever_the_platform() -> None:
+    assert settled(plan([]), rehearse=False) == {}  # keys are read on Windows, macOS and Linux
 
 
 def test_a_rehearsal_plays_the_keys_itself_and_skips_the_real_hardware_tests() -> None:
-    rehearsed = settled(plan([]), rehearse=True, platform="linux")
+    rehearsed = settled(plan([]), rehearse=True)
     assert list(rehearsed) == ["H1/H2"]
     assert rehearsed["H1/H2"].outcome == SKIPPED
 
@@ -659,12 +654,12 @@ def test_every_reason_the_runner_gives_is_one_the_report_prints(desk: Desk) -> N
     desk.answers = ["", "", "s", "q"]  # start, continue after P0, skip H8, quit at H6
     steps = [_step(c) for c in ("P0", "H8", "H6", "H7")]
     desk.sitting(steps, pause=True).run()
-    known = settled(plan([]), rehearse=False, platform="linux") | settled(plan([]), rehearse=True)
+    known = settled(plan([]), rehearse=True)
 
     given = [r["lines"][0] for r in desk.rows()] + [v.lines[0] for v in known.values()]
 
     assert [r["outcome"] for r in desk.rows()] == [NOT_RUN, SKIPPED, NOT_RUN, NOT_RUN]
-    assert len(set(given)) == 5
+    assert len(set(given)) == 4
     assert ENDED in given
     assert set(given) <= set(REASONS)
 

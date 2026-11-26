@@ -29,6 +29,7 @@ from mufuse.acquisition.types import SourceError
 from mufuse.banner import print_banner
 from mufuse.config import load_config, save_config
 from mufuse.guide import Guide, guide_from_env
+from mufuse.keys import KeyPoller
 from mufuse.live_view import YELLOW, LiveStats, Screen, render
 from mufuse.recording.format import Marker
 from mufuse.recording.reader import load_session
@@ -169,13 +170,11 @@ class _Attempt:
         )
 
 
-def _read_key() -> str | None:
-    if sys.platform == "win32":
-        import msvcrt
+_KEYS = KeyPoller()  # opened by stream and record, so POSIX terminals hand keys over at once
 
-        if msvcrt.kbhit():
-            return msvcrt.getwch()
-    return None
+
+def _read_key() -> str | None:
+    return _KEYS.poll()
 
 
 @contextlib.contextmanager
@@ -380,7 +379,8 @@ def stream(
     """Show live signal from the headband (q or Ctrl+C to stop)."""
     attempt = _Attempt.begin("stream", source, preset)
     factory, read_key = _source_factory(source, device, preset, play)
-    _run(attempt, factory, duration, read_key=read_key)
+    with _KEYS:
+        _run(attempt, factory, duration, read_key=read_key)
 
 
 @app.command()
@@ -396,13 +396,14 @@ def record(
     """Record a session with keyboard markers."""
     attempt = _Attempt.begin("record", source, preset)
     factory, read_key = _source_factory(source, device, preset, play)
-    _run(
-        attempt,
-        factory,
-        duration,
-        lambda src: SessionWriter.create(out, src.device, src.streams, notes=notes),
-        read_key=read_key,
-    )
+    with _KEYS:
+        _run(
+            attempt,
+            factory,
+            duration,
+            lambda src: SessionWriter.create(out, src.device, src.streams, notes=notes),
+            read_key=read_key,
+        )
 
 
 @app.command()

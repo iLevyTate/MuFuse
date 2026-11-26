@@ -144,15 +144,10 @@ def plan(
     return steps
 
 
-def settled(
-    steps: Sequence[Step], *, rehearse: bool, platform: str = sys.platform
-) -> dict[str, Verdict]:
+def settled(steps: Sequence[Step], *, rehearse: bool) -> dict[str, Verdict]:
     """The steps whose outcome is known before the sitting starts, with the reason."""
     known: dict[str, Verdict] = {}
     for step in steps:
-        if step.id == "H6" and not rehearse and platform != "win32":
-            why = "SPACE presses are only read on Windows; H6 needs a Windows terminal"
-            known[step.id] = Verdict(NOT_RUN, (why,))
         if step.id == "H1/H2" and rehearse:
             known[step.id] = Verdict(SKIPPED, ("the hardware tests need the real headband",))
     return known
