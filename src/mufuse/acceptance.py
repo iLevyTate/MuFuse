@@ -177,10 +177,7 @@ def _judge_h4(check: Check, session: LoadedSession, r: _Report) -> None:
             f"{', '.join(short)} failed only through samples the headband never sent: the PC "
             "kept everything that arrived. The headset's counter is not yet verified on hardware."
         )
-        r.info(
-            "whether loss on the headset counts against SC-002 is a decision for the spec; "
-            "as written it does, so this stays a FAIL"
-        )
+        r.info("loss on the headset counts against SC-002 (spec, clarified 2026-11-26)")
     r.info(f"gaps recorded: {len(session.gaps)}")
     for gap in session.gaps:
         r.info(_gap_text(gap, _t0(session)))

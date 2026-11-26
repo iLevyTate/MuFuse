@@ -70,8 +70,8 @@ _CHECKS: tuple[tuple[str, str, str], ...] = (
     (
         "H3",
         "Time to first signal, 10 connects in a row",
-        "SC-001: From headband power-on to live signal on screen in ≤ 15 seconds in ≥ 9 of 10 "
-        "attempts.",
+        "SC-001: With the headband switched on and given 5 s to start up, live signal within "
+        "15 s of starting the command in ≥ 9 of 10 attempts.",
     ),
     ("H1/H2", "Discovery and 30 s of every stream", "-"),
 )

@@ -370,7 +370,7 @@ def test_h4_fails_when_samples_are_missing(tmp_path: Path, clock: FakeClock) -> 
     result = CHECKS["H4"].evaluate(_record(tmp_path, clock, [(0, 300), (305, 600)]))
     assert not _ok(result)
     assert _said(result, "gap at +300.0 s for 5.0 s", "[info]")
-    assert not _said(result, "decision for the spec")
+    assert not _said(result, "loss on the headset counts against SC-002")
 
 
 def test_h4_fails_a_short_recording(tmp_path: Path, clock: FakeClock) -> None:
@@ -386,7 +386,7 @@ def test_h4_says_plainly_when_only_the_headset_lost_samples(
     assert not _ok(result)  # SC-002 as written: still a FAIL
     assert _said(result, "eeg 99.29% complete", "[FAIL]")
     assert _said(result, "lost on the headset link", "[info]")
-    assert _said(result, "decision for the spec", "[info]")
+    assert _said(result, "loss on the headset counts against SC-002", "[info]")
     assert result.measures["eeg.rate_hz"] == pytest.approx(254.2, abs=0.1)
     assert result.measures["eeg.lost_on_pc"] == 0
     assert result.measures["eeg.lost_on_headset"] == pytest.approx(1096, abs=4)
@@ -399,7 +399,7 @@ def test_h4_does_not_blame_the_headset_without_its_counter(
     session = _record(tmp_path, clock, [(0, 600)], lose={StreamKind.EEG: 140}, counter=counter)
     result = CHECKS["H4"].evaluate(session)
     assert not _ok(result)
-    assert not _said(result, "decision for the spec")
+    assert not _said(result, "loss on the headset counts against SC-002")
 
 
 # H5 / SC-003 ----------------------------------------------------------------------------------
