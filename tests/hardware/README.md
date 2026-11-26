@@ -24,8 +24,9 @@ uv run python scripts/hw_acceptance.py --rehearse --h4-seconds 30
 - The PC is within 2 m of the headband for the whole sitting.
 - A dark cloth is within reach for F1 (cupped hands also work), and a lamp or a window to face.
 - A Windows terminal, focused. Do not click in it during the run: SPACE and Ctrl+C only register
-  in the focused window, and a click can hold the output of a Windows console. H6 reads SPACE on
-  Windows only; elsewhere it ends as NOT RUN.
+  in the focused window, and a click can start a text selection that holds the output and takes
+  the keys. If text gets highlighted, press Esc. The run switches click-to-select off where the
+  console allows it. H6 reads SPACE on Windows only; elsewhere it ends as NOT RUN.
 - Nothing else is recording from the headband.
 
 ## Order and timeline
@@ -60,18 +61,28 @@ same.
 | H6 | Press SPACE once at each of three cues (0:10, 0:18, 0:26). | Each cue has a SPACE marker from 3 s before to 5 s after it. Extra presses are reported, not counted. |
 | H7 | Tap Ctrl+C once at the cue (0:15). Do not hold it. | The session reloads as finalized, with EEG samples, and stopped from 3 s before to 10 s after the cue. |
 | H5 | Turn the headband OFF at the cue (0:20), keep it off about 10 s, turn it ON at the cue (0:30). Press nothing while it reconnects; the screen may stand still for up to 15 s. | The signal stops from 3 s before to 8 s after the power-off cue and is away ≥ 8 s; streaming is back ≤ 20 s after the power-on cue (+3 s tolerance); the recorded gap matches the hole in the EEG data within ±0.5 s. |
-| F1 | Sit still 30 s. Take the headband off and hold the forehead sensors towards the light for 25 s. Cover them completely for 25 s. Uncover them for 15 s. Keep it switched on. | The rows that behave as ambient light are OPT5 to OPT8 (BrainFlow wire order): the same level covered as on the head (within 10%), and ≥ 1000 counts more in room light. |
+| F1 | Sit still 30 s. Take the headband off and hold the forehead sensors towards the light for 25 s. Cover them completely for 25 s. Uncover them for 15 s. Keep it switched on. | OPT5 to OPT8 (BrainFlow wire order) all behave as ambient light, and none of OPT11, 12, 15, 16 (the other known order) does. A row behaves as ambient light when it reads the same covered as on the head (within 10%) and ≥ 1000 counts more in room light. Any other row that does so is reported, not judged. |
 | H4 | Nothing. The headband is worn or lies switched on within 2 m. Leave the keyboard alone. | At least 9:50 recorded, and every stream ≥ 99.5% complete. |
 | H3 | Nothing. It connects ten times by itself (`scripts/h3_time_to_signal.py`). `--no-h3` leaves it out. | EEG within 15 s of the command start in ≥ 9 of 10 connects. |
 | H1/H2 | Nothing. The hardware tests run by themselves (`pytest -m hardware -s`). | The headband is found, and each stream delivers ≥ 95% of its nominal samples over 30 s. |
 
 SC-003 asks for the gap to be *recorded accurately*, not for the headband to be off for exactly
 10 s: the gap also includes boot and reconnect time, so H5 compares the recorded gap with the hole
-in the EEG data.
+in the EEG data. Its verdict lists every step of the reconnect with its time (signal counted as
+lost, old connection let go, each attempt, connected, first sample), so a FAIL shows which step
+used the time.
+
+Two things are said first in any verdict, before the check's own rules: that the recording was
+stopped by `q` or Ctrl+C before its time (every check but H7, which asks for the stop), and that
+no sample was recorded at all. Both mean "run it again", not that the cues were missed.
 
 ## Pause, skip, retry
 
 - The run shows the desk checklist and the plan, then waits for one Enter.
+- Every recording says when it is connecting (usually about 5 s) and when it is letting go of the
+  headband (about 8 s). Nothing is pressed during either.
+- A run begun within about 20 s of the last one counts down first: the headband needs that long
+  after a release.
 - After that each check starts by itself after a 10 s countdown that shows the last verdict and
   what the next check needs. The countdown is also the pause the headband needs between a release
   and the next connect.
@@ -83,7 +94,8 @@ in the EEG data.
 - Ctrl+C only stops the recording that is running (H7 asks for it). It never ends the run.
 
 Every check ends as PASS, FAIL, SKIPPED or NOT RUN. The exit code is 0 only when every requested
-check has passed.
+check has passed. A rehearsal cannot run H1/H2 and shows it as SKIPPED; that alone does not make
+its exit code 1.
 
 ## The other ways to run it
 
@@ -104,9 +116,10 @@ uv run python scripts/hw_acceptance.py --rehearse      # the whole sitting on th
 - `--rehearse` plays the sitting in real time with a simulated wearer on the headband and the
   keys. It never writes to the real logs or to `recordings/`: unless both `--out` and
   `MUFUSE_LOG_DIR` are given, it keeps to a scratch folder of its own and prints where.
-  `--h4-seconds 30` shortens H4 for it (give the same option to `--rejudge` for such a run). Its
-  rows are marked `sim`, its report says SIMULATOR REHEARSAL at the top, and it never counts as
-  hardware evidence.
+  `--h4-seconds 30` shortens H4 for it; `--resume` and `--rejudge` take that length from the
+  run. Both only work on a rehearsal where it ran: set `MUFUSE_LOG_DIR` and pass `--out` as the
+  rehearsal printed them at its start. Its rows are marked `sim`, its report says SIMULATOR
+  REHEARSAL at the top, and it never counts as hardware evidence.
 
 ## Where things are saved
 
@@ -115,7 +128,7 @@ uv run python scripts/hw_acceptance.py --rehearse      # the whole sitting on th
 | Results file | `acceptance.jsonl` in the log folder | One row per run start, attempt, re-judgement and summary: outcome, the judge's lines, the measures, firmware, versions and commit. |
 | Report | `acceptance/<run id>/report.md` in the log folder | The run in one page: facts, the table of checks, calibration tables and suggestions, how to reproduce. |
 | Connection log | `connect.jsonl` in the log folder | Every `stream`/`record` attempt with its time to first EEG, outcome and error. H3 reads its verdict from here. |
-| Sessions | `recordings/` in the repository (git-ignored), or `--out` | One folder per recording, with notes like `H5 acceptance <run id>`. |
+| Sessions | `recordings/` in the repository (git-ignored), or `--out` | One folder per recording, with notes like `H5 acceptance <run id>`. Besides the samples, markers and gaps it holds `reconnects.jsonl`: the steps of every reconnect with their times. |
 
 The log folder is `%LOCALAPPDATA%\mufuse\Logs` on Windows (`MUFUSE_LOG_DIR` overrides it). It is
 outside the repository. The run prints the path of the results file at the start and of the

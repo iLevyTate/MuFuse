@@ -18,6 +18,7 @@ beside that file, that holds nothing personal and can be pasted into the pull re
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
 import math
 import os
@@ -45,6 +46,7 @@ from mufuse.runlog import log_path, read_runs, summarize
 
 PASS, FAIL, SKIPPED, NOT_RUN = "PASS", "FAIL", "SKIPPED", "NOT RUN"
 COOLDOWN_S = 10.0  # from a release of the headband to the next connect; also the intermission
+RELEASE_S = 8.0  # about how long the headband takes to let go once a run is in the log
 CONNECT_TRIES = 3
 H3_WITHIN_S = 15.0  # SC-001, as in scripts/h3_time_to_signal.py, whose exit code is the verdict
 ENDED = "the run was ended before this check"
@@ -270,6 +272,15 @@ def write_report(ledger: Path, run: str, say: Say) -> Path | None:
     return path
 
 
+def last_release(connect_log: Path) -> float | None:
+    """When the headband was last let go, going by the connection log: the end of its last
+    run there plus the release that follows it. None when the log has no headband run."""
+    runs = [r for r in read_runs(connect_log) if r.source == "athena"]
+    if not runs:
+        return None
+    return datetime.fromisoformat(runs[-1].at).timestamp() + runs[-1].elapsed_s + RELEASE_S
+
+
 def standing(rows: Sequence[Row], source: str) -> dict[str, str]:
     """Where each check stands: its last attempt or re-judgement counts. Rows of another
     source are left out, so a simulated row never stands in for the headband."""
@@ -327,14 +338,14 @@ class Sitting:
     settled: Mapping[str, Verdict] = field(default_factory=dict[str, Verdict])
     history: Sequence[Row] = ()  # the rows this run already has, when it is resumed
     rejudge_command: str = f"{COMMAND} --rejudge"
+    released: float | None = None  # when the headband was last let go, as far as is known
     _outcomes: dict[str, str] = field(init=False, default_factory=dict[str, str])
     _attempts_made: Counter[str] = field(init=False, default_factory=Counter[str])
-    _released: float | None = field(init=False, default=None)  # when the last child exited
     _last: str = field(init=False, default="")
     _begun: bool = field(init=False, default=False)
 
     def run(self) -> int:
-        """Run every step; 0 only when every requested check of the run has passed."""
+        """Run every step; 0 only when every requested check that can run here has passed."""
         requested: list[str] = (
             self.history[0]["checks"] if self.history else [s.id for s in self.steps]
         )
@@ -374,8 +385,12 @@ class Sitting:
         say("On the desk before the start:")
         say("  - The headband is charged and switched on.")
         say("  - The Muse app on the phone is closed.")
-        say("  - A dark cloth is within reach for F1 (cupped hands also work).")
+        say("  - The PC is within 2 m of the headband for the whole sitting.")
+        say("  - A dark cloth is within reach for F1 (cupped hands also work),")
+        say("    and a lamp or a window to face.")
         say("  - This terminal window is focused. Do not click in it during the run.")
+        say("    If text gets highlighted, press Esc.")
+        say("  - Nothing else is recording from the headband.")
         say()
         minutes = sum(s.seconds + 25 for s in self.steps if s.id not in self.settled) / 60
         say(f"The plan, about {math.ceil(minutes)} min:")
@@ -388,7 +403,7 @@ class Sitting:
             say("Every check waits for Enter.")
         else:
             say("After the first Enter each check starts by itself after a 10 s countdown.")
-            say("Any key during a countdown pauses it: p pause · s skip · q quit.")
+            say(self._keys_line("Any key during a countdown pauses it: p pause · s skip · q quit."))
         say("A FAIL always stops and waits.")
         say()
 
@@ -416,12 +431,17 @@ class Sitting:
         if self._last:
             self.say(f"Last: {self._last}")
         self._explain(step, full=False)
-        self.say("  Any key pauses: p pause · s skip · q quit.")
+        self.say("  " + self._keys_line("Any key pauses: p pause · s skip · q quit."))
         key = self._countdown(self.clock() + COOLDOWN_S, "Starts in", keys=True)
         if key is None or key in ("s", "q"):
             return key or ""
         self._explain(step, full=True)
         return self.ask("Paused. Enter = start · s = skip · q = quit: ")
+
+    def _keys_line(self, keys: str) -> str:
+        if self.source == "athena":
+            return keys
+        return "Rehearsal: the keys are played for you. Close the window to stop."
 
     def _countdown(self, until: float, label: str, *, keys: bool) -> str | None:
         """Count down to `until` on one line; with `keys`, the first key pressed ends it."""
@@ -453,10 +473,10 @@ class Sitting:
 
     def _attempt(self, step: Step) -> Verdict:
         for tries in range(1, CONNECT_TRIES + 1):
-            if self._released is not None:  # the headband is not ready sooner than this
-                self._countdown(self._released + COOLDOWN_S, "Next connect in", keys=False)
+            if self.released is not None:  # the headband is not ready sooner than this
+                self._countdown(self.released + COOLDOWN_S, "Next connect in", keys=False)
             ran = self.launch(step)
-            self._released = self.clock()
+            self.released = self.clock()
             if step.check is None or ran.code != EXIT_CONNECT or ran.session is not None:
                 break
             if tries < CONNECT_TRIES:
@@ -505,12 +525,17 @@ class Sitting:
     def _summary(self, requested: Sequence[str]) -> int:
         outcomes = {c: self._outcomes.get(c, NOT_RUN) for c in requested}
         passed = [c for c, o in outcomes.items() if o == PASS]
-        ok = len(passed) == len(outcomes)
+        # What was skipped before the start cannot run here at all (a rehearsal has no
+        # headband for H1/H2): it is shown, and it is not held against the run.
+        excused = [c for c in outcomes if c in self.settled and self.settled[c].outcome == SKIPPED]
+        ok = len(passed) == len(outcomes) - len(excused)
         self._write({"kind": "summary", "outcomes": outcomes, "passed": ok})
         self.say(f"Summary of run {self.run_id} ({self.source})")
         for check_id, outcome in outcomes.items():
             self.say(f"  {check_id:<6} {outcome}")
         self.say(f"{len(passed)} of {len(outcomes)} passed.")
+        for check_id in excused:
+            self.say(f"{check_id} does not count here: {self.settled[check_id].lines[0]}.")
         if self.source != "athena":
             self.say("This ran on the simulator: it is not hardware evidence.")
         elif not ok:
@@ -567,7 +592,8 @@ def rejudge(
 ) -> int:
     """Judge saved sessions again with the judges as they are now. Each target is a session
     folder (a path, or a name under `out`) or a run id, which stands for the last session of
-    each of its checks. Rows are appended and marked; nothing already written is changed."""
+    each of its checks. Rows are appended and marked; nothing already written is changed. A
+    rehearsal's shorter H4 is taken from its run row unless `h4_seconds` says otherwise."""
     rows = read_rows(ledger)
     folders: list[Path] = []
     runs: list[str] = []  # the runs that got a row here, for their reports
@@ -588,15 +614,28 @@ def rejudge(
                 ok = False
                 say(f"{target}: neither a session folder nor a run with saved sessions.")
     for folder in folders:
+        if not folder.is_dir():
+            ok = False
+            say(f"There is no session folder {folder.name} under {out}.")
+            say("  Pass --out with the folder the run was recorded into.")
+            continue
         found = _acceptance_session(folder)
         if found is None:
             ok = False
             say(f"{folder}: not an acceptance session.")
             continue
         check_id, run, source = found
+        start = next((r for r in rows if r.get("kind") == "run" and r.get("run") == run), None)
+        if source == "sim" and start is None:
+            # A rehearsal keeps to its own log folder: its rows never go into another one.
+            ok = False
+            say(f"{folder.name} is from rehearsal {run}, which is not in {ledger}.")
+            say("  Set MUFUSE_LOG_DIR to the log folder that rehearsal printed at its start.")
+            continue
         check = CHECKS[check_id]
-        if check_id == "H4" and h4_seconds is not None and source == "sim":
-            check = replace(check, duration=h4_seconds)  # a rehearsal's H4; never the headband's
+        short = h4_seconds if h4_seconds is not None else (start or {}).get("h4_seconds")
+        if check_id == "H4" and short is not None and source == "sim":
+            check = replace(check, duration=short)  # a rehearsal's H4; never the headband's
         verdict = judge(check, folder)
         attempt = next(
             (
@@ -728,6 +767,26 @@ def _rehearsal_ask(prompt: str) -> str:
     return ""
 
 
+def _selection_off(kernel32: Any = None) -> Callable[[], None]:
+    """On a Windows console a click in the window starts a text selection (quick edit). While
+    it lasts, everything written to the window waits and SPACE and Ctrl+C go to the selection.
+    Switch it off for the run; the returned call puts it back. Where there is no such console
+    (a pipe, another system) nothing is changed. Terminals that select by themselves still do:
+    there Esc ends a selection."""
+    if kernel32 is None:
+        if sys.platform != "win32":
+            return lambda: None
+        kernel32 = ctypes.windll.kernel32
+    handle = kernel32.GetStdHandle(-10)  # the console's input
+    mode = ctypes.c_uint32()
+    if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+        return lambda: None
+    before = mode.value
+    # 0x0040 is quick edit; 0x0080 (extended flags) is what makes the console take the change.
+    kernel32.SetConsoleMode(handle, (before & ~0x0040) | 0x0080)
+    return lambda: kernel32.SetConsoleMode(handle, before)
+
+
 def _ignore(signum: int, frame: object) -> None:
     """Ctrl+C reaches the recording, which stops and saves; the runner carries on."""
 
@@ -772,12 +831,14 @@ def main(
     ap.add_argument("--h4-seconds", type=float, help="a shorter H4, for a rehearsal only")
     args = ap.parse_args(argv)
     previous = signal.signal(signal.SIGINT, _ignore)  # Ctrl+C belongs to the recording
+    selection_back = _selection_off()
     try:
         return _main(args, repo, spawn, clock, sleep)
     except SittingError as exc:
         _say(str(exc))
         return 2
     finally:
+        selection_back()
         signal.signal(signal.SIGINT, previous)
 
 
@@ -798,7 +859,9 @@ def _main(
         return rejudge(
             args.rejudge, out=out, ledger=ledger, versions=versions(repo), h4_seconds=h4_seconds
         )
-    exe = shutil.which("mufuse")
+    # On PATH, or beside this interpreter: a virtual environment that was not activated.
+    beside = Path(sys.executable).with_name("mufuse.exe" if sys.platform == "win32" else "mufuse")
+    exe = shutil.which("mufuse") or (str(beside) if beside.is_file() else None)
     if exe is None:
         raise SittingError(f"mufuse is not on PATH; run this with `{COMMAND}`.")
 
@@ -806,6 +869,11 @@ def _main(
     logs = log_path().parent
     out = args.out or Path("recordings")
     if rehearse and not (args.out and "MUFUSE_LOG_DIR" in os.environ):
+        if args.resume is not None:
+            raise SittingError(
+                "A rehearsal can only be resumed where it ran: set MUFUSE_LOG_DIR and pass --out "
+                "as that rehearsal printed them at its start."
+            )
         # Never into the real log or the real recordings: a scratch folder for what was not given.
         scratch = Path(tempfile.mkdtemp(prefix="mufuse-rehearsal-"))
         logs = Path(os.environ.get("MUFUSE_LOG_DIR") or scratch / "logs")
@@ -820,6 +888,8 @@ def _main(
             raise SittingError("--resume takes its checks from the run: name none with it.")
         history = to_resume(read_rows(ledger), args.resume or None, source)
         run: str = history[0]["run"]
+        if h4_seconds is None:
+            h4_seconds = history[0].get("h4_seconds")  # a rehearsal's shorter H4 stays as it was
         left = [c for c in history[0]["checks"] if standing(history, source).get(c) != PASS]
         if not left:
             _say(f"Every check of run {run} has passed.")
@@ -847,8 +917,13 @@ def _main(
         settled=settled(steps, rehearse=rehearse),
         history=history,
         rejudge_command=f"{COMMAND}{short_h4} --rejudge",
+        # A run begun right after another one waits like any next check does.
+        released=None if rehearse else last_release(logs / "connect.jsonl"),
     )
     _say(f"Sessions are saved to {out}")
+    if rehearse:
+        _say(f"To resume this rehearsal or judge it again later, set MUFUSE_LOG_DIR to {logs}")
+        _say(f"and pass --out {out}")
     return sitting.run()
 
 

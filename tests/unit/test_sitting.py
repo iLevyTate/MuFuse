@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ from mufuse.sitting import (
     FAIL,
     NOT_RUN,
     PASS,
+    RELEASE_S,
     SKIPPED,
     STEPS,
     Launcher,
@@ -32,8 +34,10 @@ from mufuse.sitting import (
     Step,
     Verdict,
     _ask,  # pyright: ignore[reportPrivateUsage]
+    _selection_off,  # pyright: ignore[reportPrivateUsage]
     _spawn,  # pyright: ignore[reportPrivateUsage]
     judged,
+    last_release,
     main,
     new_session,
     plan,
@@ -211,6 +215,62 @@ def test_the_desk_checklist_comes_before_the_one_enter(desk: Desk) -> None:
 
     for needed in ("switched on", "Muse app", "dark cloth", "Do not click", "hands for P0"):
         assert needed in said_at_the_prompt[0]
+
+
+def test_the_desk_checklist_on_screen_has_every_item_of_the_written_one(desk: Desk) -> None:
+    desk.sitting([_step("P0")]).run()
+
+    written = (REPO / "tests" / "hardware" / "README.md").read_text(encoding="utf-8")
+    items = written.split("## On the desk before the start", 1)[1].split("##", 1)[0]
+    assert items.count("\n- ") == 6
+    on_screen = desk.text.split("On the desk before the start:", 1)[1].split("The plan", 1)[0]
+    assert on_screen.count("\n  - ") == 6
+    for needed in ("charged", "Muse app", "within 2 m", "dark cloth", "a lamp or a window",
+                   "Do not click", "Nothing else is recording"):  # fmt: skip
+        assert needed in on_screen
+        assert needed in items
+
+
+def test_the_checklist_says_how_to_get_out_of_a_text_selection(desk: Desk) -> None:
+    desk.sitting([_step("P0")]).run()
+
+    assert "If text gets highlighted, press Esc." in desk.text
+
+
+def test_a_rehearsal_does_not_offer_keys_it_does_not_read(desk: Desk) -> None:
+    desk.sitting([_step("P0"), _step("H8")], source="sim").run()
+
+    assert "p pause" not in desk.text
+    assert "Rehearsal: the keys are played for you. Close the window to stop." in desk.text
+
+
+def test_a_run_started_right_after_another_waits_for_the_headband(desk: Desk) -> None:
+    desk.sitting([_step("P0")], released=desk.clock.now - 3.0).run()
+
+    assert desk.launched[0][1] == pytest.approx(COOLDOWN_S - 3.0, abs=0.3)
+    assert "Next connect in" in desk.text
+
+
+def test_a_run_started_long_after_the_last_one_does_not_wait(desk: Desk) -> None:
+    desk.sitting([_step("P0")], released=desk.clock.now - 60.0).run()
+
+    assert desk.launched[0][1] == 0.0
+    assert "Next connect in" not in desk.text
+
+
+def test_the_last_release_is_the_end_of_the_last_headband_run_in_the_log(tmp_path: Path) -> None:
+    log = tmp_path / "connect.jsonl"
+    assert last_release(log) is None
+
+    def ran(at: str, source: str) -> ConnectRun:
+        return ConnectRun(at, "record", source, None, "p1041", "signal", 4.0, 45.0)
+
+    append_run(ran("2026-11-26T09:00:00", "athena"), log)
+    append_run(ran("2026-11-26T10:00:00", "athena"), log)
+    append_run(ran("2026-11-26T11:00:00", "sim"), log)  # the simulator holds no headband
+
+    begun = datetime(2026, 11, 26, 10, 0, 0).timestamp()
+    assert last_release(log) == begun + 45.0 + RELEASE_S
 
 
 def test_the_intermission_shows_the_last_verdict_and_what_the_next_check_needs(desk: Desk) -> None:
@@ -447,6 +507,28 @@ def test_the_run_starts_and_ends_with_a_row_and_the_summary_lists_every_check(de
     for line in ("P0     PASS", "H8     FAIL", "H6     SKIPPED", "1 of 3 passed"):
         assert line in shown
     assert f"--resume {RUN}" in shown
+
+
+def test_a_rehearsal_is_not_held_back_by_the_step_it_cannot_run(desk: Desk) -> None:
+    known = {"H1/H2": Verdict(SKIPPED, ("the hardware tests need the real headband",))}
+    steps = [_step("P0"), _step("H1/H2", recorded=False)]
+
+    code = desk.sitting(steps, source="sim", settled=known).run()
+
+    assert code == 0
+    assert desk.rows("summary")[0]["passed"] is True
+    shown = desk.text.split("Summary of run", 1)[1]
+    assert "1 of 2 passed." in shown
+    assert "H1/H2 does not count here: the hardware tests need the real headband." in shown
+
+
+def test_a_rehearsal_still_fails_on_a_check_that_did_not_pass(desk: Desk) -> None:
+    known = {"H1/H2": Verdict(SKIPPED, ("the hardware tests need the real headband",))}
+    desk.verdicts = {"P0": [FAIL]}
+    steps = [_step("P0"), _step("H1/H2", recorded=False)]
+
+    assert desk.sitting(steps, source="sim", settled=known).run() == 1
+    assert desk.rows("summary")[0]["passed"] is False
 
 
 def test_a_rehearsal_says_that_it_is_not_hardware_evidence(desk: Desk) -> None:
@@ -787,7 +869,55 @@ def test_rejudge_reports_what_is_not_an_acceptance_session(desk: Desk) -> None:
     assert "20990101-000000" in desk.text
 
 
+def test_rejudge_says_where_it_looked_when_the_sessions_of_a_run_are_elsewhere(desk: Desk) -> None:
+    folder = _saved(desk.out, "H8-1", f"H8 acceptance {RUN}")
+    desk.runs = {"H8": [Ran(0, folder)]}
+    desk.sitting([_step("H8")]).run()
+    elsewhere = desk.out.parent / "elsewhere"
+
+    code = rejudge(
+        [RUN], out=elsewhere, ledger=desk.ledger, versions=VERSIONS, say=desk.say, judge=desk.judge
+    )
+
+    assert code == 1
+    assert desk.rows("rejudge") == []
+    assert f"no session folder H8-1 under {elsewhere}" in desk.text
+    assert "--out" in desk.text
+    assert "not an acceptance session" not in desk.text
+
+
+def test_a_rehearsal_session_is_only_rejudged_into_the_results_file_of_its_run(desk: Desk) -> None:
+    _saved(desk.out, "sim-h8", "H8 acceptance R1", driver="simulated")
+
+    code = rejudge(
+        ["sim-h8"], out=desk.out, ledger=desk.ledger, versions=VERSIONS, say=desk.say,
+        judge=desk.judge,
+    )  # fmt: skip
+
+    assert code == 1
+    assert read_rows(desk.ledger) == []  # nothing of a rehearsal lands in another log folder
+    assert "MUFUSE_LOG_DIR" in desk.text
+    assert not (desk.ledger.parent / "acceptance").exists()
+
+
+def test_a_rejudged_rehearsal_takes_the_length_of_its_h4_from_the_run(desk: Desk) -> None:
+    desk.sitting(plan(["H4"], h4_seconds=30.0), source="sim", run_id="R1").run()
+    _saved(desk.out, "sim-h4", "H4 acceptance R1", driver="simulated")
+    durations: list[float] = []
+
+    def judge(check: Check, folder: Path) -> Verdict:
+        durations.append(check.duration)
+        return Verdict(PASS, (), {}, folder, None)
+
+    rejudge(
+        ["sim-h4"], out=desk.out, ledger=desk.ledger, versions=VERSIONS, say=desk.say, judge=judge
+    )
+
+    assert durations == [30.0]
+
+
 def test_a_simulated_session_is_rejudged_as_sim_and_only_it_may_have_a_short_h4(desk: Desk) -> None:
+    desk.sitting([_step("H4")], source="sim", run_id="R1").run()
     _saved(desk.out, "sim-h4", "H4 acceptance R1", driver="simulated")
     _saved(desk.out, "real-h4", "H4 acceptance R2")
     durations: list[float] = []
@@ -982,12 +1112,34 @@ def test_a_short_h4_is_only_for_a_rehearsal(capsys: pytest.CaptureFixture[str]) 
 
 
 def test_the_command_says_so_when_mufuse_is_not_on_the_path(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr("shutil.which", lambda name: None)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "python"))  # and none beside this
 
     assert main(["--rehearse", "P0"], repo=REPO) == 2
     assert "uv run python scripts/hw_acceptance.py" in capsys.readouterr().out
+
+
+def test_mufuse_beside_the_interpreter_is_used_when_it_is_not_on_the_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, clock: FakeClock
+) -> None:
+    beside = tmp_path / "venv" / ("mufuse.exe" if sys.platform == "win32" else "mufuse")
+    beside.parent.mkdir()
+    beside.write_text("")
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    monkeypatch.setattr(sys, "executable", str(beside.with_name("python")))
+    spawn = Spawned()
+
+    main(
+        ["--rehearse", "P0", "--out", str(tmp_path / "out")],
+        repo=REPO,
+        spawn=spawn,
+        clock=clock,
+        sleep=clock.advance,
+    )
+
+    assert spawn.cmd[0] == str(beside)
 
 
 def test_resume_takes_its_checks_from_the_run_not_from_the_command_line(
@@ -1028,4 +1180,96 @@ def test_a_rehearsal_given_no_folders_keeps_to_a_scratch_folder_of_its_own(
         "attempt",
         "summary",
     ]
-    assert "no session was saved" in capsys.readouterr().out
+    shown = capsys.readouterr().out
+    assert "no session was saved" in shown
+    # ... and says what a later --resume or --rejudge of it needs
+    assert f"MUFUSE_LOG_DIR to {scratch / 'logs'}" in shown
+    assert f"--out {scratch / 'sessions'}" in shown
+
+
+def test_a_rehearsal_is_only_resumed_where_it_ran(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("tempfile.tempdir", str(tmp_path))
+
+    assert main(["--rehearse", "--resume"], repo=REPO) == 2  # --out is missing
+
+    shown = capsys.readouterr().out
+    assert "MUFUSE_LOG_DIR" in shown
+    assert "--out" in shown
+    assert list(tmp_path.glob("mufuse-rehearsal-*")) == []  # no new, empty scratch folder
+
+
+def test_a_resumed_rehearsal_keeps_the_length_of_its_h4(tmp_path: Path, clock: FakeClock) -> None:
+    out = ["--out", str(tmp_path / "out")]
+    spawn = Spawned()
+    main(
+        ["--rehearse", "--h4-seconds", "30", "H4", *out],
+        repo=REPO,
+        spawn=spawn,
+        clock=clock,
+        sleep=clock.advance,
+    )
+    spawn.cmd = []
+
+    main(["--rehearse", "--resume", *out], repo=REPO, spawn=spawn, clock=clock, sleep=clock.advance)
+
+    options = dict(zip(spawn.cmd[2::2], spawn.cmd[3::2], strict=True))
+    assert options["--duration"] == "30.0"
+
+
+def test_a_new_headband_run_reads_when_the_headband_was_last_let_go(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    clock: FakeClock,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    begun = datetime.fromtimestamp(clock.now - 20.0).isoformat(timespec="seconds")
+    append_run(ConnectRun(begun, "record", "athena", None, "p1041", "signal", 4.0, 15.0))
+    monkeypatch.setattr("builtins.input", lambda prompt: "")  # Enter at every prompt
+    spawn = Spawned()
+
+    main(["P0", "--out", str(tmp_path / "out")], repo=REPO, spawn=spawn, clock=clock,
+         sleep=clock.advance)  # fmt: skip
+
+    assert spawn.cmd[1] == "record"
+    assert "Next connect in 13 s" in capsys.readouterr().out  # 8 s release + 10 s, 5 s ago
+
+
+class _Console:
+    """Stands in for kernel32 on a Windows console whose input mode is `mode`."""
+
+    def __init__(self, mode: int | None) -> None:
+        self.mode = mode
+        self.set: list[int] = []
+
+    def GetStdHandle(self, which: int) -> int:  # noqa: N802
+        return 7
+
+    def GetConsoleMode(self, handle: int, ref: Any) -> int:  # noqa: N802
+        if self.mode is None:
+            return 0  # not a console
+        ref._obj.value = self.mode
+        return 1
+
+    def SetConsoleMode(self, handle: int, mode: int) -> int:  # noqa: N802
+        self.set.append(mode)
+        return 1
+
+
+def test_a_click_cannot_start_a_text_selection_during_the_run() -> None:
+    console = _Console(0x01F7)  # quick edit on, as a Windows console starts
+
+    restore = _selection_off(console)
+
+    assert console.set == [0x01B7]  # quick edit off, extended flags kept on
+    restore()
+    assert console.set == [0x01B7, 0x01F7]
+
+
+def test_where_there_is_no_console_nothing_is_changed() -> None:
+    console = _Console(None)
+
+    _selection_off(console)()
+
+    assert console.set == []

@@ -96,7 +96,7 @@ def test_a_rehearsal_runs_unattended_and_leaves_rows_and_sessions(
     code = _rehearse(["--h4-seconds", "30", "P0", "H7", "H4", "H1/H2"], recorder, tmp_path / "out")
 
     shown = capsys.readouterr().out
-    assert code == 1, shown  # H1/H2 cannot be rehearsed, so the run as a whole has not passed
+    assert code == 0, shown  # H1/H2 cannot be rehearsed, and that is not held against it
     assert recorder.wearers == ["P0", "H7", "H4"]
     rows = read_rows(logs / "acceptance.jsonl")
     attempts = [r for r in rows if r["kind"] == "attempt"]
@@ -112,6 +112,7 @@ def test_a_rehearsal_runs_unattended_and_leaves_rows_and_sessions(
     assert attempts[0]["firmware"] == "3.1.19"
     assert attempts[0]["measures"]
     assert "3 of 4 passed" in shown
+    assert "H1/H2 does not count here" in shown
     assert "not hardware evidence" in shown
     report = logs / "acceptance" / rows[0]["run"] / "report.md"
     assert f"Report: {report}" in shown

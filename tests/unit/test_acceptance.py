@@ -194,6 +194,7 @@ def test_briefings_warn_about_the_known_traps() -> None:
     assert "once" in h7
     assert "do not hold it" in h7
     assert "do not click in the window" in h7
+    assert "If text gets highlighted, press Esc" in h7
     h5 = " ".join(CHECKS["H5"].before)
     assert "freeze for up to 15 s" in h5
     assert "press nothing" in h5
@@ -246,7 +247,7 @@ def test_p0_passes_a_charged_headband_that_fits(tmp_path: Path, clock: FakeClock
 def test_p0_fails_a_low_battery_and_says_to_charge(tmp_path: Path, clock: FakeClock) -> None:
     result = _p0(tmp_path, clock, optics=_p0_optics(15.0))
     assert not _ok(result)
-    assert _said(result, "charge first: the full run takes about 25 minutes", "[FAIL]")
+    assert _said(result, "charge first: the full sitting takes about half an hour", "[FAIL]")
 
 
 def test_p0_does_not_fail_a_battery_level_that_was_never_reported(

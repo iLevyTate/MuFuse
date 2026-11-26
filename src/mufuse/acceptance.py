@@ -556,7 +556,7 @@ def _judge_p0(check: Check, session: LoadedSession, r: _Report) -> None:
         r.check(
             battery >= BATTERY_MIN_PCT,
             f"battery {battery:.0f}% (need ≥ {BATTERY_MIN_PCT:.0f}%; if lower, "
-            "charge first: the full run takes about 25 minutes)",
+            "charge first: the full sitting takes about half an hour)",
         )
     else:
         r.info("battery level was not reported; check the charge another way before the long run")
@@ -790,6 +790,7 @@ CHECKS: dict[str, Check] = {
             (
                 "Keep this terminal window focused.",
                 "When told, tap Ctrl+C once, do not hold it, and do not click in the window.",
+                "If text gets highlighted, press Esc first: a selection takes the Ctrl+C.",
                 "The recording should still save properly.",
                 _RELEASE,
             ),
