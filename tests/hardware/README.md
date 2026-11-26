@@ -56,7 +56,7 @@ same.
 
 | Check | What the wearer does | Passes when |
 |---|---|---|
-| P0 | Adjust the headband for 15 s until all four sensors show ok, then sit still for 30 s, eyes open, jaw relaxed. | Battery ≥ 20%; every stream ≥ 95% of its nominal rate; while still, each EEG channel reads ok in ≥ 80% of windows and its quietest windows stay ≤ 75 µV. |
+| P0 | Adjust the headband for 15 s until all four sensors are good (green in the live view), then sit still for 30 s, eyes open, jaw relaxed. | Battery ≥ 20%; every stream ≥ 95% of its nominal rate; while still, each EEG channel reads ok in ≥ 80% of windows and its quietest windows stay ≤ 75 µV. |
 | H8 | Sit still 15 s. Lift the LEFT ear sensor (TP9) off the skin for 10 s, let it back. Clench the jaw for 8 s, relax. Blink about once a second for 10 s. | Against the same recording's rest: the lift changes TP9 in ≥ 50% of windows and TP9 was steady at rest; the clench raises the std ≥ 3 times on TP9 or TP10; no channel goes flat or railed while blinking. The number of blinks is reported, not judged. |
 | H6 | Press SPACE once at each of three cues (0:10, 0:18, 0:26). | Each cue has a SPACE marker from 3 s before to 5 s after it. Extra presses are reported, not counted. |
 | H7 | Tap Ctrl+C once at the cue (0:15). Do not hold it. | The session reloads as finalized, with EEG samples, and stopped from 3 s before to 10 s after the cue. |

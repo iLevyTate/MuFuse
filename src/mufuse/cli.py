@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import contextlib
 import io
+import math
 import os
 import signal
 import sys
 import threading
 import time
-from collections import deque
 from collections.abc import Callable, Generator
 from dataclasses import dataclass
 from datetime import datetime
@@ -18,23 +18,18 @@ from pathlib import Path
 from types import FrameType
 from typing import Annotated
 
-import numpy as np
 import typer
-from rich.console import Console, Group, RenderableType
+from rich.console import Console, RenderableType
 from rich.live import Live
-from rich.panel import Panel
-from rich.progress_bar import ProgressBar
-from rich.table import Table
-from rich.text import Text
 
-from mufuse.acquisition.athena import ATHENA_STREAMS, DEFAULT_PRESET, validate_preset
-from mufuse.acquisition.signal_check import classify_channel
+from mufuse.acquisition.athena import DEFAULT_PRESET, preset_warning, validate_preset
 from mufuse.acquisition.source import HeadbandSource
-from mufuse.acquisition.supervisor import State, StreamSupervisor
-from mufuse.acquisition.types import Chunk, SourceError, StreamKind
-from mufuse.banner import CLI_ORANGE, print_banner
+from mufuse.acquisition.supervisor import StreamSupervisor
+from mufuse.acquisition.types import SourceError
+from mufuse.banner import print_banner
 from mufuse.config import load_config, save_config
 from mufuse.guide import Guide, guide_from_env
+from mufuse.live_view import YELLOW, LiveStats, Screen, render
 from mufuse.recording.format import Marker
 from mufuse.recording.reader import load_session
 from mufuse.recording.writer import SessionWriter
@@ -47,7 +42,7 @@ console = Console()
 
 EXIT_BAD_ARGS, EXIT_NONE_FOUND, EXIT_CONNECT, EXIT_WRITE, EXIT_UNREADABLE = 2, 3, 4, 5, 6
 EXIT_INTERRUPTED = 130  # Ctrl+C before anything was shown or recorded
-WINDOW_S = 2.0
+STATUS_EVERY_S = 5.0  # how often output that is not a terminal gets a status line
 
 
 class SourceKind(StrEnum):
@@ -130,60 +125,6 @@ def _remembered_or_scanned_device() -> str | None:
     return found[0].name
 
 
-class LiveStats:
-    """Rolling window of recent chunks for the live view."""
-
-    def __init__(self) -> None:
-        self._recent: dict[StreamKind, deque[Chunk]] = {k: deque() for k in StreamKind}
-
-    def add(self, chunks: list[Chunk], now: float) -> None:
-        for chunk in chunks:
-            self._recent[chunk.kind].append(chunk)
-        for q in self._recent.values():
-            while q and q[0].timestamps[-1] < now - WINDOW_S:
-                q.popleft()
-
-    def window(self, kind: StreamKind) -> np.ndarray:
-        q = self._recent[kind]
-        if not q:
-            return np.empty((0, len(ATHENA_STREAMS[kind].channel_names)))
-        return np.vstack([c.data for c in q])
-
-    def rate(self, kind: StreamKind) -> float:
-        return sum(c.n_samples for c in self._recent[kind]) / WINDOW_S
-
-
-def _render(
-    sup: StreamSupervisor, stats: LiveStats, recording: str | None, markers: int = 0
-) -> Table:
-    table = Table(
-        title=f"MuFuse — {sup.state.value}" + (f" — REC {recording}" if recording else "")
-    )
-    table.add_column("stream")
-    table.add_column("rate (Hz)", justify="right")
-    table.add_column("detail")
-    eeg = stats.window(StreamKind.EEG)
-    names = ATHENA_STREAMS[StreamKind.EEG].channel_names[:4]
-    status = (
-        "  ".join(
-            f"{n}:{classify_channel(eeg[:, i] - eeg[:, i].mean())}" for i, n in enumerate(names)
-        )
-        if eeg.shape[0]
-        else "waiting…"
-    )
-    table.add_row("EEG", f"{stats.rate(StreamKind.EEG):.0f}/256", status)
-    table.add_row("Motion", f"{stats.rate(StreamKind.MOTION):.0f}/52", "")
-    optics = stats.window(StreamKind.OPTICS)
-    battery = f"battery {optics[-1, -1]:.0f}%" if optics.shape[0] else ""
-    table.add_row("Optics", f"{stats.rate(StreamKind.OPTICS):.0f}/64", battery)
-    if sup.state is State.RECONNECTING:
-        table.add_row("Link", "", sup.last_error or "reconnecting…")
-    if recording:
-        table.add_row("Markers", "", f"{markers} saved")  # so a key press is seen to land
-        table.caption = "space = moment marker · 1-9 = start/end block · q = stop"
-    return table
-
-
 @dataclass(frozen=True)
 class _Attempt:
     """What the connection log needs to know about this command."""
@@ -226,32 +167,6 @@ class _Attempt:
                 label=os.environ.get("MUFUSE_RUN_LABEL") or None,
             )
         )
-
-
-_STEP_STYLE = {"done": ("✓", "dim"), "now": ("▶", f"bold {CLI_ORANGE}"), "next": ("·", "bold")}
-
-
-def _guide_panel(guide: Guide, elapsed: float) -> Panel:
-    """What we're doing, the instruction right now with its countdown, and the whole timeline."""
-    steps = Table.grid(padding=(0, 1))
-    for at, text, state in guide.timeline(elapsed):
-        mark, style = _STEP_STYLE.get(state, (" ", ""))
-        steps.add_row(mark, f"{int(at) // 60}:{int(at) % 60:02d}", text, style=style)
-    progress = ProgressBar(
-        total=guide.duration,
-        completed=min(elapsed, guide.duration),
-        width=40,
-        complete_style=CLI_ORANGE,
-    )
-    now = Text(f" {guide.prompt(elapsed)} ", style=f"bold black on {CLI_ORANGE}")
-    return Panel(
-        Group(now, Text(""), steps, Text(""), progress),
-        title=guide.title or "Guided session",
-        subtitle=guide.clock(elapsed),
-        title_align="left",
-        subtitle_align="right",
-        border_style=CLI_ORANGE,
-    )
 
 
 def _read_key() -> str | None:
@@ -314,6 +229,9 @@ def _run(
         timer = TimeToSignal(attempt.t0)
         firmware = f" · fw {device.firmware}" if device.firmware else ""
         print_banner(console, f"{device.name}{firmware} · preset {device.preset}")
+        warning = preset_warning(device.preset, device.extra.get("active_preset"))
+        if warning is not None:
+            console.print(f"! {warning}", style=YELLOW)
         try:
             _show_and_record(sup, timer, duration, writer_factory, stop, clock, sleep, read_key)
         except OSError as exc:
@@ -348,20 +266,27 @@ def _show_and_record(
             sup.on_reconnect_step = writer.add_reconnect_step
         recording = writer.session_dir.name if writer else None
         guide = guide_from_env()
-        stats, open_blocks, markers = LiveStats(), set[str](), 0
-        latest: list[RenderableType] = [_render(sup, stats, recording)]
+        stats, open_blocks, markers = LiveStats(clock), set[str](), 0
+        latest: list[Screen] = [render(sup, stats, recording)]
         while read_key() is not None:  # keys typed while it was connecting are not for this run
             pass
         started = clock()
 
         def view() -> RenderableType:
-            # Runs on Live's refresh thread, so a guide's countdown keeps moving even while a
-            # reconnect attempt blocks the loop below.
-            if guide is None:
-                return latest[0]
-            return Group(latest[0], _guide_panel(guide, clock() - started))
+            # Runs on Live's refresh thread, so the clocks keep moving even while a reconnect
+            # attempt blocks the loop below.
+            elapsed = clock() - started
+            return latest[0].with_time(elapsed, guide, elapsed)
 
-        with Live(console=console, refresh_per_second=4, get_renderable=view) as live:
+        # A terminal gets the redrawn view; piped or redirected output gets a status line now
+        # and then, since a redrawn panel would only reach it when the run ends.
+        display = (
+            Live(console=console, refresh_per_second=4, get_renderable=view)
+            if console.is_terminal
+            else contextlib.nullcontext()
+        )
+        last_status = -math.inf
+        with display:
             # The time limit is checked before every poll, so no reconnect attempt begins
             # after it has passed.
             while not stop.is_set() and (duration is None or clock() - started < duration):
@@ -369,7 +294,7 @@ def _show_and_record(
                 now = clock()
                 stats.add(chunks, now)
                 if (seconds := timer.observe(chunks, now)) is not None:
-                    live.console.print(f"first EEG after {seconds:.1f} s")
+                    console.print(f"first EEG after {seconds:.1f} s")
                 if writer is not None:
                     writer.write(chunks)
                     for label, offset in guide.due(now - started) if guide else []:
@@ -381,8 +306,13 @@ def _show_and_record(
                 if writer is not None and (marker := _key_marker(key, open_blocks, now)):
                     writer.add_marker(marker)
                     markers += 1
-                latest[0] = _render(sup, stats, recording, markers)
+                latest[0] = render(sup, stats, recording, markers, elapsed=now - started)
+                if not console.is_terminal and now - last_status >= STATUS_EVERY_S:
+                    _status(latest[0], clock() - started, guide)
+                    last_status = now
                 sleep(0.05)
+            if not console.is_terminal:  # how it ended, as the redrawn view would have shown it
+                _status(latest[0], clock() - started, guide)
     finally:
         gap = sup.open_gap  # read before the supervisor is stopped
         if writer is not None:
@@ -394,6 +324,11 @@ def _show_and_record(
             console.print(
                 "[yellow]Stopped before the signal returned. The gap is saved as open.[/yellow]"
             )
+
+
+def _status(screen: Screen, elapsed: float, guide: Guide | None) -> None:
+    line = screen.with_time(elapsed, guide, elapsed).status_line()
+    console.print(line, markup=False, highlight=False, soft_wrap=True)
 
 
 def _release(attempt: _Attempt, sup: StreamSupervisor) -> None:

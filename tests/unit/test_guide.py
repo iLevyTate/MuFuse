@@ -85,3 +85,15 @@ def test_title_survives_a_round_trip(tmp_path: Path) -> None:
     path = tmp_path / "guide.json"
     Guide(cues=(Cue(0, "Sit still"),), duration=10, title="H4 · Completeness").save(path)
     assert Guide.load(path).title == "H4 · Completeness"
+
+
+def test_current_gives_the_bare_instruction_and_the_seconds_left_in_it() -> None:
+    guide = _guide()
+    assert guide.current(0.0) == ("Sit still", 12.0)
+    assert guide.current(12.5) == ("Get ready: Turn the headband OFF", 2.5)
+    assert guide.current(20.0) == (
+        "Turn the headband OFF",
+        40.0,
+    )  # no ">>" or "now": the view says NOW
+    assert guide.current(60.0) == ("Done, stopping", 0.0)
+    assert Guide(cues=(Cue(5, "Later"),), duration=10).current(1.0) == ("Starting", 4.0)

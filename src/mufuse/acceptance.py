@@ -783,13 +783,13 @@ CHECKS: dict[str, Check] = {
             "Preflight: fit, battery and streams",
             (
                 "Put the headband on. Close the Muse phone app.",
-                "First 15 s: adjust the headband until all four sensors show ok.",
+                "First 15 s: adjust the headband until all four sensors are good (green).",
                 "Then sit still for 30 s, eyes open, jaw relaxed.",
                 _RELEASE,
             ),
             45.0,
             (
-                Cue(0, "Adjust the headband until all four sensors show ok", marker="adjust"),
+                Cue(0, "Adjust until all four sensors are good", marker="adjust"),
                 *action(15, "Sit still, eyes open, jaw relaxed", marker="still"),
             ),
             _judge_p0,
@@ -901,7 +901,7 @@ CHECKS: dict[str, Check] = {
                 _RELEASE,
             ),
             600.0,
-            (Cue(0, "Nothing to do: leave the headband switched on within 2 m of the PC"),),
+            (Cue(0, "Nothing to do: leave the headband switched on within 2 m"),),
             _judge_h4,
         ),
     )

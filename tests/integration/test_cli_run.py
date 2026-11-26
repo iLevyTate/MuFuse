@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -25,16 +26,14 @@ from mufuse.acquisition.types import DeviceInfo, SourceError, StreamKind
 from mufuse.cli import (
     EXIT_INTERRUPTED,
     EXIT_WRITE,
-    LiveStats,
     SourceKind,
     _Attempt,  # pyright: ignore[reportPrivateUsage]
-    _guide_panel,  # pyright: ignore[reportPrivateUsage]
-    _render,  # pyright: ignore[reportPrivateUsage]
     _run,  # pyright: ignore[reportPrivateUsage]
     app,
     use_utf8_output,
 )
 from mufuse.guide import Cue, Guide
+from mufuse.live_view import LiveStats, guide_panel, render
 from mufuse.recording.reader import LoadedSession, load_session
 from mufuse.recording.writer import SessionWriter
 from mufuse.runlog import log_path, read_runs
@@ -320,7 +319,7 @@ def test_key_presses_are_saved_and_counted_on_screen(
     session = _session(tmp_path)
     assert [m.kind for m in session.markers] == ["moment", "block_start", "block_end"]
     assert _length(session) == pytest.approx(0.9, abs=0.1)
-    assert "3 saved" in capsys.readouterr().out
+    assert re.search(r"markers\s+3\b", capsys.readouterr().out)  # each press is seen to land
 
 
 def test_q_stops_a_stream_without_recording(clock: FakeClock) -> None:
@@ -348,7 +347,7 @@ def test_view_shows_why_the_last_reconnect_attempt_failed(clock: FakeClock) -> N
     sup.poll()
     assert sup.state is State.RECONNECTING
     out = io.StringIO()
-    Console(file=out, width=100).print(_render(sup, LiveStats(), None))
+    Console(file=out, width=100).print(render(sup, LiveStats(), None))
     assert "Bluetooth is off" in out.getvalue()
 
 
@@ -368,7 +367,7 @@ def test_output_survives_a_cp1252_pipe(
 
     def show() -> None:
         out = Console(width=80)
-        out.print(_guide_panel(guide, 1.5))
+        out.print(guide_panel(guide, 1.5))
         for line in judge_lines:
             print(line)
         sys.stdout.flush()
@@ -381,7 +380,8 @@ def test_output_survives_a_cp1252_pipe(
     use_utf8_output()
     show()
     text = raw.getvalue().decode("utf-8")
-    assert "▶" in text
+    assert "NOW" in text
+    assert "Blink once" in text
     assert "≥" in text
     assert StreamKind.EEG.value in text
 
@@ -440,5 +440,7 @@ def test_guided_recording_piped_through_a_legacy_code_page(tmp_path: Path) -> No
     command += ["record", "--source", "sim", "--duration", "0.3", "--out", str(tmp_path / "rec")]
     done = subprocess.run(command, env=env, capture_output=True, timeout=60, check=False)
     assert done.returncode == 0, done.stderr.decode("utf-8", errors="replace")
-    assert "✓" in done.stdout.decode("utf-8")
+    out = done.stdout.decode("utf-8")
+    assert "NOW: " in out  # piped output gets status lines, the cue included
+    assert "TP9 " in out
     assert _session(tmp_path / "rec").finalized

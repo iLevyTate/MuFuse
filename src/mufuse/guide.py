@@ -40,14 +40,25 @@ class Guide:
     def prompt(self, elapsed: float) -> str:
         if elapsed >= self.duration:
             return "Done, stopping"
+        text, left = self._now(elapsed)
+        return f"{text} · {_clock(left)}"
+
+    def current(self, elapsed: float) -> tuple[str, float]:
+        """The instruction showing now, without the action marks, and the seconds until the
+        next cue (or the end)."""
+        if elapsed >= self.duration:
+            return "Done, stopping", 0.0
+        text, left = self._now(elapsed)
+        return text.removeprefix(_ACTION).removesuffix(_NOW), left
+
+    def _now(self, elapsed: float) -> tuple[str, float]:
         current, upcoming = None, self.duration
         for cue in self.cues:
             if cue.at > elapsed:
                 upcoming = cue.at
                 break
             current = cue
-        text = current.text if current else "Starting"
-        return f"{text} · {_clock(upcoming - elapsed)}"
+        return (current.text if current else "Starting"), upcoming - elapsed
 
     def timeline(self, elapsed: float) -> list[tuple[float, str, StepState]]:
         """The steps (cues other than get-ready countdowns), each marked done/now/next/later."""
