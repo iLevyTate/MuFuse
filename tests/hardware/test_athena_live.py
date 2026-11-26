@@ -37,7 +37,7 @@ def test_streams_all_signals_for_30_seconds() -> None:
             time.sleep(0.05)
     finally:
         src.stop()
-    for kind, n in counts.items():
-        expected = 30 * ATHENA_STREAMS[kind].sampling_rate
-        print(f"{kind.value}: {n} / {expected:.0f} ({100 * n / expected:.1f}%)")
-        assert n >= 0.95 * expected
+    ratios = {k: n / (30 * ATHENA_STREAMS[k].sampling_rate) for k, n in counts.items()}
+    for kind, ratio in ratios.items():  # report every stream before asserting
+        print(f"{kind.value}: {counts[kind]} samples ({100 * ratio:.1f}% of nominal)")
+    assert all(r >= 0.95 for r in ratios.values()), ratios
