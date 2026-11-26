@@ -2,30 +2,38 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 from collections import deque
 from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
 
 import numpy as np
 import typer
-from rich.console import Console
+from rich.console import Console, Group, RenderableType
 from rich.live import Live
+from rich.panel import Panel
+from rich.progress_bar import ProgressBar
 from rich.table import Table
+from rich.text import Text
 
 from mufuse.acquisition.athena import ATHENA_STREAMS, DEFAULT_PRESET, validate_preset
 from mufuse.acquisition.signal_check import classify_channel
 from mufuse.acquisition.source import HeadbandSource
 from mufuse.acquisition.supervisor import State, StreamSupervisor
 from mufuse.acquisition.types import Chunk, SourceError, StreamKind
-from mufuse.banner import print_banner
+from mufuse.banner import CLI_ORANGE, print_banner
 from mufuse.config import load_config, save_config
+from mufuse.guide import Guide, guide_from_env
 from mufuse.recording.format import Marker
 from mufuse.recording.reader import load_session
 from mufuse.recording.writer import SessionWriter
+from mufuse.runlog import ConnectRun, TimeToSignal, append_run
 
 app = typer.Typer(
     no_args_is_help=True, help="MuFuse: Punk EEG. Muse S Athena acquisition and recording."
@@ -141,6 +149,70 @@ def _render(sup: StreamSupervisor, stats: LiveStats, recording: str | None) -> T
     return table
 
 
+@dataclass(frozen=True)
+class _Attempt:
+    """What the connection log needs to know about this command."""
+
+    command: str
+    source: SourceKind
+    preset: str
+    t0: float
+
+    @classmethod
+    def begin(cls, command: str, source: SourceKind, preset: str) -> _Attempt:
+        # A launcher (scripts/h3_time_to_signal.py) passes its own start so startup time counts.
+        raw = os.environ.get("MUFUSE_T0", "")
+        try:
+            t0 = float(raw) if raw else time.time()
+        except ValueError:
+            t0 = time.time()
+        return cls(command, source, preset, t0)
+
+    def log(
+        self, outcome: str, seconds: float | None, device: str | None, error: str | None = None
+    ) -> None:
+        append_run(
+            ConnectRun(
+                at=datetime.fromtimestamp(self.t0).isoformat(timespec="seconds"),
+                command=self.command,
+                source=self.source.value,
+                device=device,
+                preset=self.preset,
+                outcome=outcome,
+                seconds_to_signal=None if seconds is None else round(seconds, 3),
+                elapsed_s=round(time.time() - self.t0, 3),
+                error=error,
+                label=os.environ.get("MUFUSE_RUN_LABEL") or None,
+            )
+        )
+
+
+_STEP_STYLE = {"done": ("✓", "dim"), "now": ("▶", f"bold {CLI_ORANGE}"), "next": ("·", "bold")}
+
+
+def _guide_panel(guide: Guide, elapsed: float) -> Panel:
+    """What we're doing, the instruction right now with its countdown, and the whole timeline."""
+    steps = Table.grid(padding=(0, 1))
+    for at, text, state in guide.timeline(elapsed):
+        mark, style = _STEP_STYLE.get(state, (" ", ""))
+        steps.add_row(mark, f"{int(at) // 60}:{int(at) % 60:02d}", text, style=style)
+    progress = ProgressBar(
+        total=guide.duration,
+        completed=min(elapsed, guide.duration),
+        width=40,
+        complete_style=CLI_ORANGE,
+    )
+    now = Text(f" {guide.prompt(elapsed)} ", style=f"bold black on {CLI_ORANGE}")
+    return Panel(
+        Group(now, Text(""), steps, Text(""), progress),
+        title=guide.title or "Guided session",
+        subtitle=guide.clock(elapsed),
+        title_align="left",
+        subtitle_align="right",
+        border_style=CLI_ORANGE,
+    )
+
+
 def _read_key() -> str | None:
     if sys.platform == "win32":
         import msvcrt
@@ -151,6 +223,7 @@ def _read_key() -> str | None:
 
 
 def _run(
+    attempt: _Attempt,
     factory: Callable[[], HeadbandSource],
     duration: float | None,
     writer_factory: Callable[[HeadbandSource], SessionWriter] | None = None,
@@ -159,27 +232,44 @@ def _run(
     try:
         sup.start()
     except SourceError as exc:
+        attempt.log("connect_error", None, None, str(exc))
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(EXIT_CONNECT) from exc
     assert sup.source is not None
+    timer = TimeToSignal(attempt.t0)
     print_banner(console, f"{sup.source.device.name} · preset {sup.source.device.preset}")
     writer = writer_factory(sup.source) if writer_factory else None
     if writer is not None:
         sup.on_gap_closed = writer.add_gap
+    guide = guide_from_env()
     stats, open_blocks, started = LiveStats(), set[str](), time.time()
+    latest: list[RenderableType] = [_render(sup, stats, None)]
+
+    def view() -> RenderableType:
+        # Runs on Live's refresh thread, so a guide's countdown keeps moving even while a
+        # reconnect attempt blocks the loop below.
+        if guide is None:
+            return latest[0]
+        return Group(latest[0], _guide_panel(guide, time.time() - started))
+
     try:
-        with Live(_render(sup, stats, None), console=console, refresh_per_second=4) as live:
+        with Live(console=console, refresh_per_second=4, get_renderable=view) as live:
             while duration is None or time.time() - started < duration:
                 chunks = sup.poll()
                 now = time.time()
                 stats.add(chunks, now)
+                if (seconds := timer.observe(chunks, now)) is not None:
+                    live.console.print(f"first EEG after {seconds:.1f} s")
                 if writer is not None:
                     writer.write(chunks)
+                    for label, offset in guide.due(now - started) if guide else []:
+                        t = started + offset
+                        writer.add_marker(Marker(t=t, kind="system", label=label, source="system"))
                     if _handle_key(_read_key(), writer, open_blocks, now):
                         break
                 elif _read_key() == "q":
                     break
-                live.update(_render(sup, stats, writer.session_dir.name if writer else None))
+                latest[0] = _render(sup, stats, writer.session_dir.name if writer else None)
                 time.sleep(0.05)
     except KeyboardInterrupt:
         pass
@@ -188,6 +278,8 @@ def _run(
         raise typer.Exit(EXIT_WRITE) from exc
     finally:
         sup.stop()
+        outcome = "no_signal" if timer.seconds is None else "signal"
+        attempt.log(outcome, timer.seconds, sup.source.device.name)
         if writer is not None:
             writer.finalize()
             console.print(f"Saved session: {writer.session_dir}")
@@ -236,7 +328,8 @@ def stream(
     duration: DurationOpt = None,
 ) -> None:
     """Show live signal from the headband (q or Ctrl+C to stop)."""
-    _run(_source_factory(source, device, preset, play), duration)
+    attempt = _Attempt.begin("stream", source, preset)
+    _run(attempt, _source_factory(source, device, preset, play), duration)
 
 
 @app.command()
@@ -250,8 +343,10 @@ def record(
     out: Annotated[Path, typer.Option(help="Recordings folder")] = Path("recordings"),
 ) -> None:
     """Record a session with keyboard markers."""
+    attempt = _Attempt.begin("record", source, preset)
     factory = _source_factory(source, device, preset, play)
     _run(
+        attempt,
         factory,
         duration,
         lambda src: SessionWriter.create(out, src.device, src.streams, notes=notes),

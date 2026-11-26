@@ -22,7 +22,7 @@ and settles into a flat resting baseline.
 | [`assets/mufuse-banner-dark.svg`](../assets/mufuse-banner-dark.svg) | README and banners on dark backgrounds (transparent) |
 | [`assets/mufuse-banner-light.svg`](../assets/mufuse-banner-light.svg) | Same on light backgrounds; μ, baseline and text in Carbon |
 | [`assets/mufuse-icon.svg`](../assets/mufuse-icon.svg) | 1:1 app icon and favicon on Lab Slate with a Graticule grid; checked at 16×16 px |
-| `src/mufuse/banner.py` | Terminal version as half-block pixel art, 6 lines × 80 columns |
+| `src/mufuse/banner.py` | Terminal version as a plain-ASCII line trace (slashes, underscores, pipes), 5 lines × 80 columns |
 
 Construction rules:
 - The colour change happens at the μ's left stem. Amber is never used to the right of it.
@@ -46,7 +46,9 @@ Status colours describe **signal quality only** (contact, packets, artifacts). N
 grade a person's state: there is no "red = bad mood".
 
 The light banner's tagline uses a darker amber (`#B45309`) so the text stays readable on white.
-The mark itself always uses `phosphor-amber`.
+The mark itself always uses `phosphor-amber`. The one exception is the CLI banner, which draws the
+impulse in orange (`#F97316`) and the μ and baseline in white (`#FFFFFF`) so the ASCII trace reads
+clearly in a terminal.
 
 ## Typography (SIL Open Font License)
 

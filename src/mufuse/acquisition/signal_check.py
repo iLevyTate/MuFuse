@@ -38,10 +38,18 @@ def classify_channel(window_uv: FloatArray) -> ChannelStatus:
         return "flat"
     if np.mean(np.abs(x) > RAIL_UV) > RAIL_FRACTION:
         return "railed"
-    # Scaled median absolute deviation: robust spread that brief blinks cannot inflate.
-    spread = 1.4826 * float(np.median(np.abs(x - np.median(x))))
+    spread = spread_uv(x)
     if spread < FLAT_UV:
         return "flat"
     if spread > NOISY_UV:
         return "noisy"
     return "ok"
+
+
+def spread_uv(window_uv: FloatArray) -> float:
+    """Scaled median absolute deviation: a robust spread that brief blinks cannot inflate."""
+    x = np.asarray(window_uv, dtype=np.float64)
+    x = x[np.isfinite(x)]
+    if x.size == 0:
+        return 0.0
+    return 1.4826 * float(np.median(np.abs(x - np.median(x))))

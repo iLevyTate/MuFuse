@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mufuse.acquisition.signal_check import classify_channel
+from mufuse.acquisition.signal_check import classify_channel, spread_uv
 
 RNG = np.random.default_rng(0)
 T = np.arange(512) / 256
@@ -37,3 +37,9 @@ def test_railed() -> None:
 @pytest.mark.parametrize("bad", [np.full(512, np.nan), np.empty(0)])
 def test_unusable_input_is_flat(bad: np.ndarray) -> None:
     assert classify_channel(bad) == "flat"
+
+
+def test_spread_matches_standard_deviation_for_gaussian_noise() -> None:
+    rng = np.random.default_rng(0)
+    assert spread_uv(rng.normal(0, 20, 20_000)) == pytest.approx(20, rel=0.03)
+    assert spread_uv(np.array([np.nan])) == 0.0
