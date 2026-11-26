@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-labelledby="t">
+  <title id="t">MuFuse</title>
+  <defs><clipPath id="c"><rect width="64" height="64" rx="14"/></clipPath></defs>
+  <rect width="64" height="64" rx="14" fill="#111315"/>
+  <path d="M 8 0 V 64 M 0 8 H 64 M 16 0 V 64 M 0 16 H 64 M 24 0 V 64 M 0 24 H 64 M 32 0 V 64 M 0 32 H 64 M 40 0 V 64 M 0 40 H 64 M 48 0 V 64 M 0 48 H 64 M 56 0 V 64 M 0 56 H 64" stroke="#2A2F36" stroke-width="0.75" clip-path="url(#c)"/>
+  <path d="M 5 36 H 11 L 14.5 30 L 18 36 L 23 8 L 30 56 L 34 32 L 36.5 36 H 40" stroke="#F59E0B" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 52 30 V 32 Q 52 36 56 36 H 59" stroke="#F3F1EC" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 42 24 V 50 M 42 29 C 42 33.5 44.5 36 47 36 C 49.5 36 52 33.5 52 29 M 52 24 V 32" stroke="#F3F1EC" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

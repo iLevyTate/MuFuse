@@ -27,7 +27,7 @@ uv run mufuse stream --source sim         # live view without hardware
   never drop samples, retime them. Gaps > 0.25 s are preserved.
 - `acquisition/supervisor.py` — stall (3 s) detection, backoff reconnect, explicit gaps.
 - `recording/` — append-only float64 LE files + JSON manifest + JSONL markers/gaps (crash-safe).
-- `cli.py` — `devices / stream / record / inspect`.
+- `cli.py` — `devices / stream / record / inspect`; `banner.py` — header shown only on a TTY.
 
 ## Gotchas
 - Only one device can connect to the headband; the phone Muse app must be closed.
@@ -36,3 +36,5 @@ uv run mufuse stream --source sim         # live view without hardware
 - fNIRS hemoglobin is experimental until feature 004's validation passes; channel order is unverified
   (see `docs/research/2026-11-25-athena-fnirs-resources.md`).
 - User-facing language: describe signal changes vs. personal baseline; never "you are anxious".
+- Brand tokens, logo rules and the InteraXon notice: `docs/BRAND.md`. Status colours grade
+  signal quality only, never the person.

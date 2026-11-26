@@ -21,12 +21,15 @@ from mufuse.acquisition.signal_check import classify_channel
 from mufuse.acquisition.source import HeadbandSource
 from mufuse.acquisition.supervisor import State, StreamSupervisor
 from mufuse.acquisition.types import Chunk, SourceError, StreamKind
+from mufuse.banner import print_banner
 from mufuse.config import load_config, save_config
 from mufuse.recording.format import Marker
 from mufuse.recording.reader import load_session
 from mufuse.recording.writer import SessionWriter
 
-app = typer.Typer(no_args_is_help=True, help="MuFuse: Muse S Athena acquisition and recording.")
+app = typer.Typer(
+    no_args_is_help=True, help="MuFuse: Punk EEG. Muse S Athena acquisition and recording."
+)
 console = Console()
 
 EXIT_BAD_ARGS, EXIT_NONE_FOUND, EXIT_CONNECT, EXIT_WRITE, EXIT_UNREADABLE = 2, 3, 4, 5, 6
@@ -159,6 +162,7 @@ def _run(
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(EXIT_CONNECT) from exc
     assert sup.source is not None
+    print_banner(console, f"{sup.source.device.name} · preset {sup.source.device.preset}")
     writer = writer_factory(sup.source) if writer_factory else None
     if writer is not None:
         sup.on_gap_closed = writer.add_gap
