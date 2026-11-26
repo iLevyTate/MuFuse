@@ -39,6 +39,6 @@ Legend: `[P]` = parallelizable · `[US#]` = user story · Test tasks precede the
 
 ## Phase 8 — Polish
 - [x] T022 CLI `record` with key markers; Ctrl+C finalization test
-- [ ] T023 Hardware acceptance run: SC-001…SC-005 checklist in `tests/hardware/README.md`
-- [ ] T024 README quickstart
+- [ ] T023 Hardware acceptance run: SC-001…SC-005 checklist in `tests/hardware/README.md` **(checklist written; needs hardware run)**
+- [x] T024 README quickstart
 - [ ] T025 Record headband firmware version in the manifest (fNIRS research: firmware changed optics channel behavior)
