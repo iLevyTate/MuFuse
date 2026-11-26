@@ -1,0 +1,59 @@
+[project]
+name = "mufuse"
+version = "0.1.0"
+description = "Local-first brain-state self-awareness companion for the Muse S Athena"
+readme = "README.md"
+authors = [
+    { name = "Levy Tate", email = "78818969+iLevyTate@users.noreply.github.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "bleak>=3.1.0",
+    "brainflow>=5.22",
+    "numpy>=2.5.5",
+    "platformdirs>=4.14.8",
+    "rich>=15.0.0",
+    "scipy>=1.18.1",
+    "typer>=0.29.2",
+]
+
+[project.scripts]
+mufuse = "mufuse.cli:app"
+
+[build-system]
+requires = ["uv_build>=0.12.7,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.7.0",
+    "pyright>=1.1.414",
+    "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.6",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "RUF", "NPY", "PT"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.13"
+typeCheckingMode = "standard"
+strict = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "hardware: requires a real Muse S Athena headband (run manually with -m hardware)",
+]
+
+[tool.coverage.run]
+source = ["mufuse"]
+omit = ["*/acquisition/brainflow_athena.py", "*/acquisition/discovery.py"]
