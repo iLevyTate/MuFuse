@@ -1,22 +1,27 @@
-"""Guided hardware acceptance for 001 (tests/hardware/README.md, H4-H8).
+"""Guided hardware acceptance for 001 (tests/hardware/README.md): preflight P0, H4-H8, then F1.
 
 Each check is a guided recording: what to read before starting, timed on-screen cues, and an
 automatic verdict computed from the saved session. Cue times are seconds after streaming starts,
 and verdicts use the same schedule against the session's `started_at`, so anyone re-running the
 checks gets the same instructions and the same pass rules.
+
+Every judge also files the numbers behind its verdict in `Result.measures`, so a check that
+failed can be judged again later from what was saved, without the headband.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
 
 from mufuse.acquisition.athena import ATHENA_STREAMS
-from mufuse.acquisition.signal_check import classify_channel, spread_uv
-from mufuse.acquisition.types import StreamKind
+from mufuse.acquisition.signal_check import NOISY_UV, classify_channel, spread_uv
+from mufuse.acquisition.types import FloatArray, StreamKind
 from mufuse.guide import READY_S, Cue, Guide, action
+from mufuse.recording.format import Gap
 from mufuse.recording.reader import LoadedSession
 
 
@@ -25,12 +30,14 @@ class Result:
     check: str
     passed: bool
     lines: tuple[str, ...]
+    measures: dict[str, float] = field(default_factory=dict[str, float])
 
 
 @dataclass
 class _Report:
     lines: list[str] = field(default_factory=list[str])
     passed: bool = True
+    measures: dict[str, float] = field(default_factory=dict[str, float])
 
     def check(self, ok: bool, text: str) -> None:
         self.passed &= ok
@@ -38,6 +45,9 @@ class _Report:
 
     def info(self, text: str) -> None:
         self.lines.append(f"[info] {text}")
+
+    def measure(self, name: str, value: float) -> None:
+        self.measures[name] = round(float(value), 4)
 
 
 @dataclass(frozen=True)
@@ -59,7 +69,7 @@ class Check:
     def evaluate(self, session: LoadedSession) -> Result:
         report = _Report()
         self._judge(self, session, report)
-        return Result(self.id, report.passed, tuple(report.lines))
+        return Result(self.id, report.passed, tuple(report.lines), report.measures)
 
 
 def _t0(session: LoadedSession) -> float:
@@ -70,7 +80,34 @@ def _eeg(session: LoadedSession) -> tuple[np.ndarray, np.ndarray]:
     return session.streams.get(StreamKind.EEG, (np.empty(0), np.empty((0, 4))))
 
 
-# H4 / SC-002 -------------------------------------------------------------------------------
+def _gap_text(gap: Gap, t0: float) -> str:
+    length = "still open at the end" if gap.end is None else f"for {gap.end - gap.start:.1f} s"
+    return f"gap at +{gap.start - t0:.1f} s {length} ({gap.reason})"
+
+
+# Completeness: H4 / SC-002, and the preflight ----------------------------------------------
+
+COMPLETE_PCT = 99.5
+# Samples in one subpacket of each stream on presets p1041/p1042 (BrainFlow's muse_athena.cpp).
+SUBPACKET_SAMPLES = {"eeg": 2, "motion": 3, "optics": 1}
+
+
+def _completeness(session: LoadedSession, r: _Report) -> dict[str, tuple[int, int, float]]:
+    """Per stream: samples expected over its span, samples received, and the effective rate."""
+    streams: dict[str, tuple[int, int, float]] = {}
+    counts: dict[str, dict[str, int]] = session.manifest.get("completeness") or {}
+    for kind, c in counts.items():
+        expected, received = int(c["expected"]), int(c["received"])
+        nominal = float(session.manifest["streams"][kind]["sampling_rate"])
+        rate = nominal * (received - 1) / (expected - 1) if expected > 1 else 0.0
+        streams[kind] = (expected, received, rate)
+        r.measure(f"{kind}.completeness_pct", _pct(expected, received))
+        r.measure(f"{kind}.rate_hz", rate)
+    return streams
+
+
+def _pct(expected: int, received: int) -> float:
+    return 100 * received / expected if expected else 0.0
 
 
 def _judge_h4(check: Check, session: LoadedSession, r: _Report) -> None:
@@ -79,51 +116,121 @@ def _judge_h4(check: Check, session: LoadedSession, r: _Report) -> None:
     r.check(
         span >= check.duration - 10, f"recorded {span:.0f} s (need ≥ {check.duration - 10:.0f} s)"
     )
-    completeness: dict[str, dict[str, int]] = session.manifest.get("completeness") or {}
-    r.check(bool(completeness), "session finalized with completeness counts")
-    for kind, c in completeness.items():
-        pct = 100 * c["received"] / c["expected"] if c["expected"] else 0.0
-        r.check(pct >= 99.5, f"{kind} {pct:.2f}% complete (need ≥ 99.50%)")
+    streams = _completeness(session, r)
+    r.check(bool(streams), "session finalized with completeness counts")
+    lost: dict[str, int] | None = session.manifest.get("lost_subpackets")
+    short: list[str] = []  # streams under the limit
+    pc_side: list[str] = []  # ... that would still be under it with the headset's loss added back
+    for kind, (expected, received, rate) in streams.items():
+        pct = _pct(expected, received)
+        r.check(
+            pct >= COMPLETE_PCT,
+            f"{kind} {pct:.2f}% complete (need ≥ {COMPLETE_PCT:.2f}%) · {rate:.2f} Hz effective",
+        )
+        missing = max(expected - received, 0)
+        subpackets = lost.get(kind, 0) if lost is not None else 0
+        headset = min(subpackets * SUBPACKET_SAMPLES.get(kind, 1), missing)
+        r.measure(f"{kind}.missing", missing)
+        r.measure(f"{kind}.lost_on_headset", headset)
+        r.measure(f"{kind}.lost_on_pc", missing - headset)
+        if lost is None:
+            r.info(f"{kind}: {missing} of {expected} samples missing (no headset loss counter)")
+        else:
+            r.info(
+                f"{kind}: {missing} of {expected} samples missing: {headset} lost on the headset "
+                f"link ({subpackets} subpackets by its counter), {missing - headset} on the PC side"
+            )
+        if pct < COMPLETE_PCT:
+            short.append(kind)
+            if _pct(expected, received + headset) < COMPLETE_PCT:
+                pc_side.append(kind)
+    if short and not pc_side:
+        r.info(
+            f"{', '.join(short)} failed only through samples the headband never sent: the PC "
+            "kept everything that arrived. The headset's counter is not yet verified on hardware."
+        )
+        r.info(
+            "whether loss on the headset counts against SC-002 is a decision for the spec; "
+            "as written it does, so this stays a FAIL"
+        )
     r.info(f"gaps recorded: {len(session.gaps)}")
+    for gap in session.gaps:
+        r.info(_gap_text(gap, _t0(session)))
 
 
 # H5 / SC-003 -------------------------------------------------------------------------------
 
 RESUME_LIMIT_S = 20.0
 OFF_LATE_S = 8.0  # holding the power button takes a moment
+# A real off-and-on cannot be shorter: 3 s until the stall is noticed, 1 s of backoff, and
+# 4-6 s to connect again.
+MIN_GAP_S = 8.0
 
 
 def _judge_h5(check: Check, session: LoadedSession, r: _Report) -> None:
     t0 = _t0(session)
-    off, on = t0 + check.at("power_off"), t0 + check.at("power_on")
-    closed = [g for g in session.gaps if g.end is not None]
-    open_gaps = len(session.gaps) - len(closed)
-    r.check(bool(closed), "a gap was recorded and closed (the headband went off and came back)")
-    if not closed:
-        r.info(f"open gaps: {open_gaps}")
+    off, on = check.at("power_off"), check.at("power_on")
+    at_cue = [g for g in session.gaps if -READY_S <= g.start - t0 - off <= OFF_LATE_S]
+    gap = at_cue[0] if at_cue else None
+    for other in session.gaps:
+        if other is not gap:
+            r.info("other " + _gap_text(other, t0))
+    r.measure("gaps", len(session.gaps))
+    if gap is None:
+        if session.gaps:
+            r.check(
+                False,
+                f"no interruption started near the power-off cue "
+                f"(need {-READY_S:+.0f} to {OFF_LATE_S:+.0f} s from it)",
+            )
+        else:
+            r.check(False, "no interruption was seen at all: the signal never stopped")
         return
-    gap = max(closed, key=lambda g: (g.end or g.start) - g.start)
-    assert gap.end is not None
-    resumed = gap.end - on
+    stopped = gap.start - t0
+    r.measure("stopped_offset_s", stopped - off)
+    r.check(True, f"signal stopped {stopped - off:+.1f} s from the power-off cue")
+    ended = float(session.manifest.get("ended_at") or t0 + check.duration) - t0
+    if gap.end is None:
+        r.check(
+            False,
+            f"the headband never came back (open gap from +{stopped:.1f} s): the recording "
+            f"ended at +{ended:.1f} s, {ended - on:.1f} s after the power-on cue",
+        )
+        return
+    back, length = gap.end - t0, gap.end - gap.start
+    r.measure("gap_s", length)
+    r.measure("resume_s", back - on)
     r.check(
-        resumed <= RESUME_LIMIT_S + READY_S,
-        f"streaming resumed {resumed:.1f} s after the power-on cue "
-        f"(need ≤ {RESUME_LIMIT_S:.0f} s, +{READY_S:.0f} s tolerance)",
+        length >= MIN_GAP_S,
+        f"signal was away for {length:.1f} s (need ≥ {MIN_GAP_S:.0f} s: "
+        "a real off-and-on cannot be shorter)",
     )
-    stopped = gap.start - off
     r.check(
-        -READY_S <= stopped <= OFF_LATE_S,
-        f"signal stopped {stopped:+.1f} s from the power-off cue "
-        f"(need {-READY_S:+.0f} to {OFF_LATE_S:+.0f} s)",
+        back - on <= RESUME_LIMIT_S + READY_S,
+        f"streaming resumed {abs(back - on):.1f} s {'before' if back < on else 'after'} the "
+        f"power-on cue (need ≤ {RESUME_LIMIT_S:.0f} s after it, +{READY_S:.0f} s tolerance)",
     )
+    if back < on:
+        r.info(
+            "the signal was back before the power-on cue: an early switch-on is not held "
+            "against the check, the time away still has to be long enough"
+        )
     ts, _ = _eeg(session)
-    hole = float(np.max(np.diff(ts))) if ts.size > 1 else 0.0
-    recorded = gap.end - gap.start
+    inside = (ts[:-1] >= gap.start - 1.0) & (ts[1:] <= gap.end + 1.0)
+    hole = float(np.diff(ts)[inside].max()) if inside.any() else 0.0
+    r.measure("hole_s", hole)
     r.check(
-        abs(hole - recorded) <= 0.5,
-        f"recorded gap {recorded:.2f} s vs hole in the EEG data {hole:.2f} s (need within ±0.5 s)",
+        abs(hole - length) <= 0.5,
+        f"recorded gap {length:.2f} s vs hole in the EEG data {hole:.2f} s (need within ±0.5 s)",
     )
-    r.info(f"gaps: {len(closed)} closed, {open_gaps} open; reason {gap.reason}")
+    r.info(
+        f"timeline: off cue +{off:.0f} s · signal stopped +{stopped:.1f} s · on cue +{on:.0f} s "
+        f"· signal back +{back:.1f} s · recording ended +{ended:.1f} s · reason {gap.reason}"
+    )
+    r.info(
+        "of the time away, about 3 s is the recorder noticing the stall and 5-7 s is "
+        "reconnecting once the headband is on; the rest is the headband being off or starting up"
+    )
 
 
 # H6 / SC-004 -------------------------------------------------------------------------------
@@ -134,12 +241,20 @@ PRESS_LATE_S = 5.0
 def _judge_h6(check: Check, session: LoadedSession, r: _Report) -> None:
     t0 = _t0(session)
     presses = [m.t - t0 for m in session.markers if m.source == "keyboard" and m.kind == "moment"]
-    cue_times = [c.at for c in check.cues if c.marker]
-    r.check(len(presses) == len(cue_times), f"{len(presses)} SPACE markers (need {len(cue_times)})")
-    for i, at in enumerate(cue_times, 1):
-        near = [p for p in presses if at - READY_S <= p <= at + PRESS_LATE_S]
-        took = f"{near[0] - at:+.1f} s from its cue" if near else "none in its window"
-        r.check(bool(near), f"press {i}: {took}")
+    unused = sorted(presses)
+    # SC-004 is about where a marker sits in time, so each cue is judged by the first press in
+    # its window. A double tap or a stray press is reported and not held against the check.
+    for i, at in enumerate((c.at for c in check.cues if c.marker), 1):
+        first = next((p for p in unused if at - READY_S <= p <= at + PRESS_LATE_S), None)
+        if first is None:
+            r.check(False, f"press {i}: none in its window")
+        else:
+            unused.remove(first)
+            r.measure(f"press_{i}.offset_s", first - at)
+            r.check(True, f"press {i}: {first - at:+.1f} s from its cue")
+    r.measure("presses", len(presses))
+    extra = "".join(f"  +{p:.1f} s" for p in unused)
+    r.info(f"{len(presses)} SPACE markers, {len(unused)} extra (not counted){extra}")
 
 
 # H7 / SC-005 -------------------------------------------------------------------------------
@@ -150,11 +265,13 @@ STOP_LATE_S = 10.0
 def _judge_h7(check: Check, session: LoadedSession, r: _Report) -> None:
     r.check(session.finalized, "session reloads as finalized after Ctrl+C")
     ts, _ = _eeg(session)
+    r.measure("eeg_samples", ts.size)
     r.check(ts.size > 0, f"{ts.size} EEG samples saved")
     ended = session.manifest.get("ended_at")
     if ended is None:
         return
     stopped = float(ended) - (_t0(session) + check.at("ctrl_c"))
+    r.measure("stopped_offset_s", stopped)
     r.check(
         -READY_S <= stopped <= STOP_LATE_S,
         f"stopped {stopped:+.1f} s from the Ctrl+C cue (need within {STOP_LATE_S:.0f} s, "
@@ -162,86 +279,298 @@ def _judge_h7(check: Check, session: LoadedSession, r: _Report) -> None:
     )
 
 
-# H8 -----------------------------------------------------------------------------------------
+# EEG phases: H8 and the preflight ----------------------------------------------------------
+# The live indicator (`classify_channel`) grades a centred window by a robust spread, which a
+# disturbance shorter than a quarter of the window cannot move: in real Athena data an input
+# without skin contact shows a sharp dip every 12 samples and still reads "ok". The judges
+# therefore compare plain numbers against the wearer's own rest phase, and print the indicator's
+# labels as [info] for tuning it later (feature 002).
 
 SETTLE_S = 2.0  # ignore the start of each phase: people react at different speeds
 WINDOW_S, STEP_S = 2.0, 0.5  # same window the live view classifies
 _CHANNELS = ATHENA_STREAMS[StreamKind.EEG].channel_names[:4]
+_SENSOR = {"TP9": "left ear", "AF7": "left forehead", "AF8": "right forehead", "TP10": "right ear"}
+_EEG_HZ = ATHENA_STREAMS[StreamKind.EEG].sampling_rate
+EEG_RANGE_UV = 725.0  # the Athena's amplifier ends there: (raw - 8192) * 1450 / 16383
+RAIL_MARGIN = 0.05  # a sample this close to either end of the range counts as railed
+RAIL_SHARE = 0.10  # share of railed samples that makes a window railed
+FLAT_PTP_UV = 2.0  # peak-to-peak below this: no signal at all
+CHANGE_FACTOR = 3.0  # a window changed when its std is this many times the rest std
+REST_FLOOR_UV = 5.0  # ... and the rest std counts as at least this
+MAINS_HZ = (50, 60)
+DEFLECTION_FACTOR = 5.0  # blink-like: this many rest spreads away from the phase's median
 
 
-def _phase(
-    session: LoadedSession, start: float, end: float
-) -> tuple[list[dict[str, str]], list[float]]:
-    """Per-window channel statuses and per-channel median spread over [start + settle, end)."""
+@dataclass(frozen=True)
+class _Phase:
+    """One cue phase of the four EEG channels, cut into the live view's windows.
+
+    `std`, `ptp`, `spread` and `rail` are (windows, 4). `rail` is the share of samples near
+    either end of the amplifier's range, taken before centring. `mains` is (2, 4): the share of
+    the phase's power above 1 Hz that lies within 1 Hz of 50 and of 60 Hz.
+    """
+
+    samples: FloatArray
+    std: FloatArray
+    ptp: FloatArray
+    spread: FloatArray
+    rail: FloatArray
+    labels: tuple[tuple[str, ...], ...]
+    mains: FloatArray
+
+    @property
+    def windows(self) -> int:
+        return int(self.std.shape[0])
+
+
+def _phase(session: LoadedSession, start: float, end: float) -> _Phase:
+    """The EEG over [start + settle, end) seconds after the recording started."""
     ts, data = _eeg(session)
     t0 = _t0(session)
-    statuses: list[dict[str, str]] = []
-    spreads: list[list[float]] = [[] for _ in _CHANNELS]
+    wins: list[FloatArray] = []
     a = t0 + start + SETTLE_S
     while a + WINDOW_S <= t0 + end:
-        win = data[(ts >= a) & (ts < a + WINDOW_S)]
-        if win.shape[0]:
-            row: dict[str, str] = {}
-            for i, name in enumerate(_CHANNELS):
-                x = win[:, i] - win[:, i].mean()
-                row[name] = classify_channel(x)
-                spreads[i].append(spread_uv(x))
-            statuses.append(row)
+        win = data[(ts >= a) & (ts < a + WINDOW_S), :4]
+        if win.shape[0] >= WINDOW_S * _EEG_HZ / 2:  # at most half of it missing
+            wins.append(win)
         a += STEP_S
-    return statuses, [float(np.median(s)) if s else 0.0 for s in spreads]
+    samples = data[(ts >= t0 + start + SETTLE_S) & (ts < t0 + end), :4]
+    centred = [w - w.mean(axis=0) for w in wins]
+    near_rail = (1 - RAIL_MARGIN) * EEG_RANGE_UV
+    mains = np.zeros((2, 4))
+    if samples.shape[0] >= _EEG_HZ:
+        power = np.abs(np.fft.rfft(samples - samples.mean(axis=0), axis=0)) ** 2
+        freqs = np.fft.rfftfreq(samples.shape[0], d=1 / _EEG_HZ)
+        total = np.maximum(power[freqs >= 1.0].sum(axis=0), 1e-12)
+        mains = np.array([power[np.abs(freqs - hz) <= 1.0].sum(axis=0) / total for hz in MAINS_HZ])
+    return _Phase(
+        samples=samples,
+        std=np.array([w.std(axis=0) for w in wins]).reshape(-1, 4),
+        ptp=np.array([np.ptp(w, axis=0) for w in wins]).reshape(-1, 4),
+        spread=np.array([[spread_uv(c[:, i]) for i in range(4)] for c in centred]).reshape(-1, 4),
+        rail=np.array([(np.abs(w) >= near_rail).mean(axis=0) for w in wins]).reshape(-1, 4),
+        labels=tuple(tuple(classify_channel(c[:, i]) for i in range(4)) for c in centred),
+        mains=mains,
+    )
 
 
-def _share(statuses: list[dict[str, str]], channel: str, wanted: set[str]) -> float:
-    return sum(s[channel] in wanted for s in statuses) / len(statuses) if statuses else 0.0
+def _describe(r: _Report, name: str, title: str, p: _Phase) -> None:
+    """File the phase's numbers per channel and print them with the indicator's label shares."""
+    if not p.windows:
+        r.info(f"{title}: no EEG recorded")
+        return
+    std, spread, ptp = (np.median(v, axis=0) for v in (p.std, p.spread, p.ptp))
+    rail = p.rail.mean(axis=0)
+    labels: list[str] = []
+    for i, ch in enumerate(_CHANNELS):
+        r.measure(f"{name}.{ch}.std_uv", std[i])
+        r.measure(f"{name}.{ch}.spread_uv", spread[i])
+        r.measure(f"{name}.{ch}.ptp_uv", ptp[i])
+        r.measure(f"{name}.{ch}.rail_share", rail[i])
+        for hz, share in zip(MAINS_HZ, p.mains[:, i], strict=True):
+            r.measure(f"{name}.{ch}.mains_{hz}hz_share", share)
+        seen = [row[i] for row in p.labels]
+        shares = {label: seen.count(label) / len(seen) for label in dict.fromkeys(seen)}
+        r.measure(f"{name}.{ch}.ok_share", shares.get("ok", 0.0))
+        labels.append(f"{ch} " + " ".join(f"{label} {s:.0%}" for label, s in shares.items()))
+    numbers = "  ".join(
+        f"{ch} {std[i]:.0f}/{spread[i]:.0f}/{ptp[i]:.0f}" for i, ch in enumerate(_CHANNELS)
+    )
+    r.info(f"{title}: std/robust spread/peak-to-peak in µV: {numbers}")
+    r.info(f"labels {title}: " + " · ".join(labels))
+
+
+def _mains(r: _Report, title: str, p: _Phase) -> None:
+    """Print how much of the baseline is mains hum, the usual reason for a noisy rest."""
+    shares = "  ".join(
+        f"{ch} {'/'.join(f'{s:.0%}' for s in p.mains[:, i])}" for i, ch in enumerate(_CHANNELS)
+    )
+    r.info(f"{title}: share of power at {'/'.join(map(str, MAINS_HZ))} Hz (mains): {shares}")
+
+
+def _deflections(x: FloatArray, level: float) -> tuple[int, float]:
+    """Excursions further than `level` from the median, 0.3 s or more apart: count, median peak."""
+    away = np.abs(x - np.median(x))
+    idx = np.flatnonzero(away > level)
+    if idx.size == 0:
+        return 0, 0.0
+    groups = np.split(idx, np.flatnonzero(np.diff(idx) > 0.3 * _EEG_HZ) + 1)
+    return len(groups), float(np.median([away[g].max() for g in groups]))
 
 
 def _judge_h8(check: Check, session: LoadedSession, r: _Report) -> None:
-    def phase(label: str, until: str) -> tuple[list[dict[str, str]], str]:
-        statuses, spreads = _phase(session, check.at(label), check.at(until))
-        text = "  ".join(f"{n} {s:.0f} µV" for n, s in zip(_CHANNELS, spreads, strict=True))
-        return statuses, text
+    rest = _phase(session, check.at("relax"), check.at("lift_tp9"))
+    lift = _phase(session, check.at("lift_tp9"), check.at("replace"))
+    clench = _phase(session, check.at("clench"), check.at("relax_jaw"))
+    blink = _phase(session, check.at("blink"), check.at("end"))
+    phases = {"rest": rest, "lift": lift, "clench": clench, "blink": blink}
+    for name, p in phases.items():
+        _describe(r, name, "at rest" if name == "rest" else f"during {name}", p)
+    _mains(r, "at rest", rest)
+    if not all(p.windows for p in phases.values()):
+        r.check(False, "EEG recorded in all four phases")
+        return
+    rest_std = np.maximum(np.median(rest.std, axis=0), REST_FLOOR_UV)
 
-    relax, spreads = phase("relax", "lift_tp9")
-    ok_share = min(_share(relax, ch, {"ok"}) for ch in _CHANNELS)
-    r.info(f"at rest: every channel ok in ≥ {ok_share:.0%} of windows · spread {spreads}")
+    def changed(p: _Phase) -> FloatArray:
+        """Per channel, the share of windows that no longer look like the rest phase."""
+        loud = p.std >= CHANGE_FACTOR * rest_std
+        return (loud | (p.ptp < FLAT_PTP_UV) | (p.rail > RAIL_SHARE)).mean(axis=0)
 
-    lift, spreads = phase("lift_tp9", "replace")
-    share = _share(lift, "TP9", {"flat", "railed"})
-    r.check(share >= 0.5, f"lifted TP9 shows flat/railed in {share:.0%} of windows · {spreads}")
+    lifted, resting = changed(lift), changed(rest)
+    lift_std = np.median(lift.std, axis=0)
+    for i, ch in enumerate(_CHANNELS):
+        r.measure(f"lift.{ch}.changed_share", lifted[i])
+        r.measure(f"rest.{ch}.changed_share", resting[i])
+    r.check(
+        lifted[0] >= 0.5,
+        f"lifting the left ear sensor changed TP9 in {lifted[0]:.0%} of windows (need ≥ 50%): "
+        f"std {lift_std[0]:.0f} µV against {rest_std[0]:.0f} µV at rest",
+    )
+    r.check(
+        resting[0] < 0.5,
+        f"TP9 was steady at rest: it looked lifted in {resting[0]:.0%} of rest windows "
+        "(need < 50%)",
+    )
+    most = int(np.lexsort((lift_std / rest_std, lifted))[-1])
+    if lifted[most] == 0:
+        r.info("no channel changed while lifting")
+    else:
+        r.info(
+            f"changed most while lifting: {_CHANNELS[most]} ({_SENSOR[_CHANNELS[most]]}) "
+            f"in {lifted[most]:.0%} of windows"
+        )
+        if most != 0:
+            r.info(
+                "if the left ear sensor was the one lifted, left and right are swapped in the "
+                "recording; otherwise a different sensor was lifted"
+            )
 
-    clench, spreads = phase("clench", "relax_jaw")
-    share = max(_share(clench, ch, {"noisy"}) for ch in ("TP9", "TP10"))
-    r.check(share >= 0.5, f"jaw clench shows noisy on TP9/TP10 in {share:.0%} · {spreads}")
+    # Std over the whole phase, so a clench that comes in bursts or ends early still counts.
+    jaw = np.sqrt((clench.std**2).mean(axis=0)) / rest_std
+    r.measure("clench.TP9.std_ratio", jaw[0])
+    r.measure("clench.TP10.std_ratio", jaw[3])
+    r.check(
+        max(jaw[0], jaw[3]) >= CHANGE_FACTOR,
+        f"jaw clench raised the std to {jaw[0]:.1f} times rest on TP9 and {jaw[3]:.1f} times "
+        f"on TP10 (need ≥ {CHANGE_FACTOR:.0f} times on either)",
+    )
 
-    blink, spreads = phase("blink", "end")
-    share = min(_share(blink, ch, {"ok"}) for ch in _CHANNELS)
-    r.check(share >= 0.5, f"while blinking every channel stays ok in ≥ {share:.0%} · {spreads}")
+    lost = ((blink.ptp < FLAT_PTP_UV) | (blink.rail > RAIL_SHARE)).mean(axis=0)
+    worst = int(np.argmax(lost))
+    r.check(
+        lost[worst] < 0.5,
+        f"while blinking no channel went flat or railed: {_CHANNELS[worst]} did in "
+        f"{lost[worst]:.0%} of windows (need < 50%)",
+    )
+    found: list[str] = []
+    for i in (1, 2):
+        level = DEFLECTION_FACTOR * max(float(np.median(rest.spread[:, i])), REST_FLOOR_UV)
+        count, peak = _deflections(blink.samples[:, i], level)
+        r.measure(f"blink.{_CHANNELS[i]}.deflections", count)
+        r.measure(f"blink.{_CHANNELS[i]}.deflection_uv", peak)
+        found.append(f"{_CHANNELS[i]} {count} (median {peak:.0f} µV)")
+    r.info(f"blink-like deflections: {'  '.join(found)}; about one a second was asked for")
+
+
+# P0: preflight -----------------------------------------------------------------------------
+
+BATTERY_MIN_PCT = 20.0
+STREAM_MIN_PCT = 95.0
+FIT_OK_SHARE = 0.8
+# The last firmware with public evidence of unchanged sensor placement and output.
+FIRMWARE_KNOWN = (3, 1, 29)
+
+
+def _judge_p0(check: Check, session: LoadedSession, r: _Report) -> None:
+    firmware: str | None = session.manifest["device"].get("firmware")
+    if firmware is None:
+        r.info("firmware was not reported by the headband")
+    elif tuple(int(n) for n in re.findall(r"\d+", firmware)) > FIRMWARE_KNOWN:
+        known = ".".join(map(str, FIRMWARE_KNOWN))
+        r.info(
+            f"firmware {firmware} is newer than {known}, the last version with public evidence "
+            "of unchanged sensor placement and output"
+        )
+    else:
+        r.info(f"firmware {firmware}")
+
+    # The battery level is the last optics column. It reads 0 for the first seconds.
+    _, optics = session.streams.get(StreamKind.OPTICS, (np.empty(0), np.empty((0, 17))))
+    battery = float(optics[:, -1].max()) if optics.shape[0] else 0.0
+    if battery > 0:
+        r.measure("battery_pct", battery)
+        r.check(
+            battery >= BATTERY_MIN_PCT,
+            f"battery {battery:.0f}% (need ≥ {BATTERY_MIN_PCT:.0f}%; if lower, "
+            "charge first: the full run takes about 25 minutes)",
+        )
+    else:
+        r.info("battery level was not reported; check the charge another way before the long run")
+
+    streams = _completeness(session, r)
+    r.check(bool(streams), "session finalized with completeness counts")
+    for kind, (expected, received, rate) in streams.items():
+        pct = _pct(expected, received)
+        r.check(
+            pct >= STREAM_MIN_PCT,
+            f"{kind} {pct:.2f}% of its nominal rate (need ≥ {STREAM_MIN_PCT:.0f}%) "
+            f"· {rate:.2f} Hz effective",
+        )
+        if STREAM_MIN_PCT <= pct < COMPLETE_PCT:
+            r.info(f"{kind} is under {COMPLETE_PCT}%: H4 is at risk; move closer to the PC")
+
+    still = _phase(session, check.at("still"), check.duration)
+    _describe(r, "still", "while still", still)
+    _mains(r, "while still", still)
+    if not still.windows:
+        r.check(False, "EEG recorded while sitting still")
+        return
+    # The label alone cannot see a sensor without contact (see above), so the quietest quarter
+    # of the windows must also stay under the indicator's own noise limit by plain std.
+    quiet = np.percentile(still.std, 25, axis=0)
+    for i, ch in enumerate(_CHANNELS):
+        ok = sum(row[i] == "ok" for row in still.labels) / still.windows
+        r.check(
+            ok >= FIT_OK_SHARE and quiet[i] <= NOISY_UV,
+            f"{ch} ({_SENSOR[ch]}) ok in {ok:.0%} of still windows (need ≥ {FIT_OK_SHARE:.0%}), "
+            f"quietest windows {quiet[i]:.0f} µV (need ≤ {NOISY_UV:.0f} µV); "
+            "if not, reseat that sensor on the skin",
+        )
 
 
 # F1: optics ambient channels ---------------------------------------------------------------
 # BrainFlow board 67 passes optics through in wire order: OPT1-4 red, 5-8 ambient, 9-12 730 nm,
 # 13-16 850 nm, each group LI, RI, LO, RO. libMuse (and Mind Monitor) reorder to OPTICS1-16 with
 # ambient at 11, 12, 15, 16. docs/research/2026-11-25-athena-fnirs-resources.md, update 2026-11-26.
+#
+# In real data the ambient rows sit on a pedestal near 338 000 counts whatever the light, so they
+# never fall "close to zero" when covered. What marks them: covered, they read the same as on the
+# head (both dark), and room light lifts them above that level. LED rows read something else on
+# the head, where their own light comes back from the skin.
 
 AMBIENT_WIRE: tuple[int, ...] = (5, 6, 7, 8)
 AMBIENT_LIBMUSE: tuple[int, ...] = (11, 12, 15, 16)
 CARDIAC_HZ = (0.7, 3.0)
-DARK_DROP = 0.5  # ambient channels should fall close to zero when covered
+PEDESTAL_MATCH = 0.10  # covered level within this share of the on-head level
+LIGHT_RISE = 1000.0  # counts room light must add over the covered level (noise is about 40)
+_F1_PHASES = (
+    ("on_head", "room_light", "on head"),
+    ("room_light", "dark", "room light"),
+    ("dark", "light_again", "covered"),
+    ("light_again", "end", "light again"),
+)
 
 
-def _optics_level(session: LoadedSession, start: float, end: float) -> np.ndarray:
-    """Median of each OPT channel over [start + settle, end)."""
+def _optics_window(session: LoadedSession, start: float, end: float) -> FloatArray:
+    """The 16 OPT rows over [start + settle, end)."""
     ts, data = session.streams[StreamKind.OPTICS]
     t0 = _t0(session)
-    win = data[(ts >= t0 + start + SETTLE_S) & (ts < t0 + end), :16]
-    return np.median(win, axis=0) if win.shape[0] else np.zeros(16)
+    return data[(ts >= t0 + start + SETTLE_S) & (ts < t0 + end), :16]
 
 
-def _pulsatility(session: LoadedSession, start: float, end: float) -> np.ndarray:
+def _pulsatility(win: FloatArray) -> FloatArray:
     """Share of each channel's 0.1-10 Hz power that sits in the cardiac band."""
-    ts, data = session.streams[StreamKind.OPTICS]
-    t0 = _t0(session)
-    win = data[(ts >= t0 + start + SETTLE_S) & (ts < t0 + end), :16]
     if win.shape[0] < 64:
         return np.zeros(16)
     x = win - win.mean(axis=0)
@@ -260,29 +589,56 @@ def _judge_f1(check: Check, session: LoadedSession, r: _Report) -> None:
     if StreamKind.OPTICS not in session.streams:
         r.check(False, "no optics stream in this session (use preset p1041 or p1042)")
         return
-    light = (
-        _optics_level(session, check.at("room_light"), check.at("dark"))
-        + _optics_level(session, check.at("light_again"), check.at("end"))
-    ) / 2
-    dark = _optics_level(session, check.at("dark"), check.at("light_again"))
-    drop = (light - dark) / np.maximum(np.abs(light), 1e-9)
-    top = np.argsort(-drop)[:4]
-    ambient = _rows(top)
-    darkened = float(drop[top].min())
-    r.check(
-        darkened >= DARK_DROP,
-        f"covering darkened the sensors: the 4 most affected channels fell ≥ {darkened:.0%} "
-        f"(need ≥ {DARK_DROP:.0%}; if not, cover them fully and retry)",
-    )
+    windows = [_optics_window(session, check.at(a), check.at(b)) for a, b, _ in _F1_PHASES]
+    if not all(w.shape[0] for w in windows):
+        r.check(False, "optics recorded in all four phases")
+        return
+    levels = [np.median(w, axis=0) for w in windows]
+    for (name, _, title), level in zip(_F1_PHASES, levels, strict=True):
+        for i, value in enumerate(level):
+            r.measure(f"{name}.OPT{i + 1}.median", value)
+        r.info(f"{title}: " + "  ".join(f"{i + 1}:{v:.0f}" for i, v in enumerate(level)))
+    head, light_1, dark, light_2 = levels
+    _, all_rows = session.streams[StreamKind.OPTICS]
+    if not np.ptp(all_rows[:, :16], axis=0).any():
+        r.check(False, "optics stream is flat; check the preset and reconnect")
+        return
+
+    lit = np.minimum(light_1, light_2)
+    steady = np.abs(head - dark) <= PEDESTAL_MATCH * np.maximum(np.maximum(head, dark), 1.0)
+    ambient = _rows(np.flatnonzero(steady & (lit - dark >= LIGHT_RISE)))
+    for title, diff in (
+        ("room light over covered", lit - dark),
+        ("covered over on head", dark - head),
+    ):
+        r.info(f"{title}: " + "  ".join(f"{i + 1}:{d:.0f}" for i, d in enumerate(diff)))
+    if not ambient:
+        # Nothing qualified. Say which of the two usual reasons it was before the order verdict.
+        rose = float((lit - head).max())
+        if rose < LIGHT_RISE:
+            r.check(
+                False,
+                f"room light too dim: the rows rose only about {max(round(rose, -1), 0):.0f} "
+                f"counts over their on-head level (need ≥ {LIGHT_RISE:.0f}); hold the sensors "
+                "off the head and face a lamp or a window",
+            )
+        else:
+            r.check(
+                False,
+                "the cover let light through: rows that rose in room light did not come back "
+                "to their on-head level when covered; cover the sensors completely",
+            )
     known = {AMBIENT_WIRE: "BrainFlow wire order", AMBIENT_LIBMUSE: "libMuse order"}
-    order = known.get(ambient, "neither known order")
+    named = f"OPT{', OPT'.join(map(str, ambient))}" if ambient else "no row"
     r.check(
         ambient == AMBIENT_WIRE,
-        f"darkness hits OPT{', OPT'.join(map(str, ambient))} hardest: {order} "
-        f"(expected OPT5-8 for BrainFlow wire order)",
+        f"ambient light shows on {named}: {known.get(ambient, 'neither known order')} "
+        "(expected OPT5-8 for BrainFlow wire order). Ambient rows read the same covered as on "
+        f"the head (within {PEDESTAL_MATCH:.0%}) and rise ≥ {LIGHT_RISE:.0f} counts in room light",
     )
-    r.info("drop in darkness: " + "  ".join(f"{i + 1}:{d:.0%}" for i, d in enumerate(drop)))
-    pulse = _pulsatility(session, check.at("on_head"), check.at("room_light"))
+    pulse = _pulsatility(windows[0])
+    for i, share in enumerate(pulse):
+        r.measure(f"on_head.OPT{i + 1}.pulse_share", share)
     weakest = _rows(np.argsort(pulse)[:4])
     r.info(
         f"least pulse on the head: OPT{', OPT'.join(map(str, weakest))} "
@@ -291,6 +647,11 @@ def _judge_f1(check: Check, session: LoadedSession, r: _Report) -> None:
 
 
 # The checks -----------------------------------------------------------------------------------
+
+# The recorder saves first and then lets go of the headband, which takes several seconds.
+_RELEASE = (
+    "When the time is up, wait for the verdict: the release of the headband takes up to 10 s."
+)
 
 
 def _h6_cues() -> tuple[Cue, ...]:
@@ -301,64 +662,26 @@ def _h6_cues() -> tuple[Cue, ...]:
     return tuple(cues)
 
 
+# In running order: the preflight, then everything that needs hands, and the ten hands-free
+# minutes last. F1 takes the headband off, so it comes after the checks that need it worn.
 CHECKS: dict[str, Check] = {
     c.id: c
     for c in (
         Check(
-            "H4",
-            "10-minute recording completeness (SC-002)",
+            "P0",
+            "Preflight: fit, battery and streams",
             (
-                "Charge the headband to at least 25% first.",
-                "Sit within 2 m of the PC. You only need to sit still for 10 minutes.",
-                "Keep your jaw relaxed; don't talk or walk away.",
+                "Put the headband on. Close the Muse phone app.",
+                "First 15 s: adjust the headband until all four sensors show ok.",
+                "Then sit still for 30 s, eyes open, jaw relaxed.",
+                _RELEASE,
             ),
-            600.0,
-            (Cue(0, "Sit still, jaw relaxed, eyes open"),),
-            _judge_h4,
-        ),
-        Check(
-            "H5",
-            "Power-cycle recovery (SC-003)",
+            45.0,
             (
-                "Put a finger on the headband's power button now so you can find it blind.",
-                "When told, turn the headband OFF, keep it off about 10 s, then turn it ON.",
-                "Stay seated with the headband on; it reconnects by itself.",
+                Cue(0, "Adjust the headband until all four sensors show ok", marker="adjust"),
+                *action(15, "Sit still, eyes open, jaw relaxed", marker="still"),
             ),
-            75.0,
-            (
-                Cue(0, "Keep still, headband on"),
-                *action(20, "Turn the headband OFF", marker="power_off"),
-                Cue(23, "Keep it OFF"),
-                *action(30, "Turn the headband ON", marker="power_on"),
-                Cue(33, "Keep still while it reconnects (should take under 20 s)"),
-            ),
-            _judge_h5,
-        ),
-        Check(
-            "H6",
-            "Keyboard markers (SC-004)",
-            (
-                "Keep this terminal window focused: SPACE only registers here.",
-                "Press SPACE once each time you're told; there are 3 presses.",
-            ),
-            40.0,
-            _h6_cues(),
-            _judge_h6,
-        ),
-        Check(
-            "H7",
-            "Ctrl+C mid-recording leaves a readable session (SC-005)",
-            (
-                "Keep this terminal window focused.",
-                "Press Ctrl+C once when told. The recording should still save properly.",
-            ),
-            60.0,
-            (
-                Cue(0, "Keep still"),
-                *action(15, "Press Ctrl+C", marker="ctrl_c"),
-                Cue(18, "Press Ctrl+C if you haven't yet"),
-            ),
-            _judge_h7,
+            _judge_p0,
         ),
         Check(
             "H8",
@@ -367,6 +690,7 @@ CHECKS: dict[str, Check] = {
                 "The LEFT ear sensor sits behind your left ear (TP9).",
                 "You'll be asked to: sit still, lift that sensor off your skin, let it go back,",
                 "clench your jaw, relax it, then blink about once a second.",
+                _RELEASE,
             ),
             63.0,
             (
@@ -381,30 +705,92 @@ CHECKS: dict[str, Check] = {
             _judge_h8,
         ),
         Check(
+            "H6",
+            "Keyboard markers (SC-004)",
+            (
+                "Keep this terminal window focused: SPACE only registers here.",
+                "Press SPACE once each time you're told; there are 3 presses.",
+                _RELEASE,
+            ),
+            40.0,
+            _h6_cues(),
+            _judge_h6,
+        ),
+        Check(
+            "H7",
+            "Ctrl+C mid-recording leaves a readable session (SC-005)",
+            (
+                "Keep this terminal window focused.",
+                "When told, tap Ctrl+C once, do not hold it, and do not click in the window.",
+                "The recording should still save properly.",
+                _RELEASE,
+            ),
+            60.0,
+            (
+                Cue(0, "Keep still"),
+                *action(15, "Tap Ctrl+C once", marker="ctrl_c"),
+                Cue(18, "Tap Ctrl+C once if you haven't yet"),
+            ),
+            _judge_h7,
+        ),
+        Check(
+            "H5",
+            "Power-cycle recovery (SC-003)",
+            (
+                "Put a finger on the headband's power button now so you can find it blind.",
+                "When told, turn the headband OFF, keep it off about 10 s, then turn it ON.",
+                "Stay seated with the headband on; it reconnects by itself.",
+                "The screen may freeze for up to 15 s while it searches for the headband; "
+                "press nothing.",
+                _RELEASE,
+            ),
+            75.0,
+            (
+                Cue(0, "Keep still, headband on"),
+                *action(20, "Turn the headband OFF", marker="power_off"),
+                Cue(23, "Keep it OFF"),
+                *action(30, "Turn the headband ON", marker="power_on"),
+                Cue(33, "Press nothing while it reconnects (should take under 20 s)"),
+            ),
+            _judge_h5,
+        ),
+        Check(
             "F1",
             "fNIRS optics: which channels are ambient light",
             (
                 "The optical sensors are in the middle of the forehead strip.",
                 "Have a dark cloth ready, or plan to cup your hand tightly over the sensors.",
-                "You'll sit still wearing it, then hold it off your head facing the room light.",
+                "You'll sit still wearing it, then hold it off your head with the sensors facing "
+                "a lamp or a window.",
                 "Then cover the sensors completely, then uncover them.",
                 "Keep the headband switched on throughout.",
+                _RELEASE,
             ),
             98.0,
             (
                 Cue(0, "Sit still with the headband on", marker="on_head"),
                 *action(
                     30,
-                    "Take the headband off; hold the forehead sensors facing the room light",
+                    "Take the headband off; hold the forehead sensors facing a lamp or a window",
                     marker="room_light",
                 ),
                 *action(55, "Cover the forehead sensors completely and hold", marker="dark"),
-                *action(
-                    80, "Uncover the sensors, facing the room light again", marker="light_again"
-                ),
+                *action(80, "Uncover the sensors, facing the light again", marker="light_again"),
                 Cue(95, "Done, you can put the headband back on", marker="end"),
             ),
             _judge_f1,
+        ),
+        Check(
+            "H4",
+            "10-minute recording completeness (SC-002)",
+            (
+                "The headband may be worn or lie switched on within 2 m of the PC.",
+                "There is nothing to do for 10 minutes; leave the keyboard alone.",
+                _RELEASE,
+            ),
+            600.0,
+            (Cue(0, "Nothing to do: leave the headband switched on within 2 m of the PC"),),
+            _judge_h4,
         ),
     )
 }
