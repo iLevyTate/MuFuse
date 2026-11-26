@@ -18,7 +18,14 @@ from typing import IO, Any
 import numpy as np
 
 from mufuse.acquisition.types import Chunk, DeviceInfo, StreamKind, StreamSpec
-from mufuse.recording.format import FORMAT_VERSION, Gap, Marker, new_session_id, stream_filename
+from mufuse.recording.format import (
+    FORMAT_VERSION,
+    Gap,
+    Marker,
+    ReconnectStep,
+    new_session_id,
+    stream_filename,
+)
 
 _LE_F64 = np.dtype("<f8")
 
@@ -40,7 +47,7 @@ class SessionWriter:
         }
         self._jsonl = {
             name: (session_dir / f"{name}.jsonl").open("a", encoding="utf-8")
-            for name in ("markers", "gaps")
+            for name in ("markers", "gaps", "reconnects")
         }
         self._received = dict.fromkeys(streams, 0)
         self._first_t: dict[StreamKind, float] = {}
@@ -100,6 +107,9 @@ class SessionWriter:
 
     def add_gap(self, gap: Gap) -> None:
         self._append_jsonl("gaps", asdict(gap))
+
+    def add_reconnect_step(self, step: ReconnectStep) -> None:
+        self._append_jsonl("reconnects", asdict(step))
 
     def finalize(self, lost_subpackets: Mapping[StreamKind, int] | None = None) -> None:
         if self._finalized:

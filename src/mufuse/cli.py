@@ -334,6 +334,7 @@ def _show_and_record(
     try:
         if writer is not None:
             sup.on_gap_closed = writer.add_gap
+            sup.on_reconnect_step = writer.add_reconnect_step
         recording = writer.session_dir.name if writer else None
         guide = guide_from_env()
         stats, open_blocks, markers = LiveStats(), set[str](), 0

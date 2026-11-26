@@ -14,7 +14,7 @@ from mufuse.acquisition.signal_check import classify_channel
 from mufuse.acquisition.simulated import CTRL_C, Wearer
 from mufuse.acquisition.types import Chunk, DeviceInfo, FloatArray, StreamKind
 from mufuse.guide import READY_S
-from mufuse.recording.format import Gap, Marker
+from mufuse.recording.format import Gap, Marker, ReconnectStep
 from mufuse.recording.reader import LoadedSession, load_session
 from mufuse.recording.writer import SessionWriter
 from tests.conftest import FakeClock
@@ -110,6 +110,59 @@ def _at(check: str) -> dict[str, float]:
 
 
 # The run as a whole ---------------------------------------------------------------------------
+
+STOPPABLE = [c for c in CHECKS if c != "H7"]  # H7 asks for the early stop
+
+
+@pytest.mark.parametrize("check", STOPPABLE)
+def test_a_recording_that_was_stopped_early_says_so_first(
+    tmp_path: Path, clock: FakeClock, check: str
+) -> None:
+    session = _record(tmp_path, clock, [(0, 12)], markers=_cue_markers(check))
+    result = CHECKS[check].evaluate(session)
+    assert not _ok(result)
+    assert result.lines[0] == (
+        f"[FAIL] the recording was stopped after 12 s of {CHECKS[check].duration:.0f} s "
+        "(q or Ctrl+C): retry"
+    )
+
+
+@pytest.mark.parametrize("check", STOPPABLE)
+def test_a_recording_that_ran_its_time_is_not_called_stopped(
+    tmp_path: Path, clock: FakeClock, check: str
+) -> None:
+    length = CHECKS[check].duration
+    session = _record(tmp_path, clock, [(0, length)], markers=_cue_markers(check), end=length + 0.3)
+    assert not _said(CHECKS[check].evaluate(session), "was stopped after")
+
+
+def test_h7_is_not_told_that_its_ctrl_c_stopped_the_recording(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    session = _record(tmp_path, clock, [(0, 16)], markers=_cue_markers("H7"))
+    result = CHECKS["H7"].evaluate(session)
+    assert _ok(result)
+    assert not _said(result, "was stopped after")
+
+
+def test_a_crashed_recording_is_not_called_stopped(tmp_path: Path, clock: FakeClock) -> None:
+    session = _record(tmp_path, clock, [(0, 12)], markers=_cue_markers("H6"), finalize=False)
+    assert not _said(CHECKS["H6"].evaluate(session), "was stopped after")
+
+
+@pytest.mark.parametrize("check", list(CHECKS))
+def test_a_session_without_a_single_sample_says_so_first(
+    tmp_path: Path, clock: FakeClock, check: str
+) -> None:
+    session = _record(
+        tmp_path, clock, [(0, 0)], markers=_cue_markers(check), end=CHECKS[check].duration
+    )
+    result = CHECKS[check].evaluate(session)
+    assert not _ok(result)
+    assert result.lines[0] == (
+        "[FAIL] no samples were recorded at all: the connection was made but nothing arrived; retry"
+    )
+    assert not _said(result, "was stopped after")
 
 
 @pytest.mark.parametrize("check", sorted(CHECKS))
@@ -408,6 +461,60 @@ def test_h5_fails_when_the_only_gap_is_far_from_the_off_cue(
     assert _said(result, "other gap at +45.0 s", "[info]")
 
 
+def test_h5_fails_when_the_recorded_gap_does_not_match_the_hole_in_the_data(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    session = _record(tmp_path, clock, [(0, 21), (36, 75)], markers=H5_MARKERS, end=75)
+    (gap,) = session.gaps
+    # gaps.jsonl says the signal stopped 2 s before the data does: 17 s against a hole of 15 s.
+    result = CHECKS["H5"].evaluate(replace(session, gaps=[replace(gap, start=gap.start - 2.0)]))
+    assert not _ok(result)
+    failed = [line for line in result.lines if line.startswith("[FAIL]")]
+    assert len(failed) == 1
+    assert "recorded gap 17.00 s vs hole in the EEG data 15.00 s" in failed[0]
+
+
+def test_h5_shows_where_the_time_away_went(tmp_path: Path, clock: FakeClock) -> None:
+    t0 = clock.now
+    session = _record(tmp_path, clock, [(0, 21), (53.5, 75)], markers=H5_MARKERS, end=75)
+    steps = [
+        ReconnectStep(t0 + 24.0, "lost", "stall"),
+        ReconnectStep(t0 + 24.1, "released"),
+        ReconnectStep(t0 + 25.0, "attempt"),
+        ReconnectStep(t0 + 41.0, "failed", "no device"),
+        ReconnectStep(t0 + 41.1, "attempt"),
+        ReconnectStep(t0 + 46.4, "connected"),
+        ReconnectStep(t0 + 53.5, "first_sample"),
+    ]
+    result = CHECKS["H5"].evaluate(replace(session, reconnects=steps))
+    assert not _ok(result)  # back 23.5 s after the cue: the lines below say which stage took it
+    said = [line for line in result.lines if line.startswith("[info] reconnect")]
+    assert said == [
+        "[info] reconnect +24.0 s (-6.0 s from the power-on cue): the signal counted as lost "
+        "(stall)",
+        "[info] reconnect +24.1 s (-5.9 s from the power-on cue): the old connection was let go",
+        "[info] reconnect +25.0 s (-5.0 s from the power-on cue): an attempt to connect began",
+        "[info] reconnect +41.0 s (+11.0 s from the power-on cue): that attempt failed (no device)",
+        "[info] reconnect +41.1 s (+11.1 s from the power-on cue): an attempt to connect began",
+        "[info] reconnect +46.4 s (+16.4 s from the power-on cue): connected",
+        "[info] reconnect +53.5 s (+23.5 s from the power-on cue): the first sample arrived",
+    ]
+    assert not _said(result, "about 3 s")  # measured now, not estimated
+
+
+def test_h5_shows_the_attempts_when_the_headband_never_came_back(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    t0 = clock.now
+    session = _record(
+        tmp_path, clock, [(0, 21)], markers=H5_MARKERS, end=75, open_gap_at=21 - 1 / 256
+    )
+    steps = [ReconnectStep(t0 + 25.0, "attempt"), ReconnectStep(t0 + 41.0, "failed", "no device")]
+    result = CHECKS["H5"].evaluate(replace(session, reconnects=steps))
+    assert _said(result, "the headband never came back", "[FAIL]")
+    assert _said(result, "+41.0 s (+11.0 s from the power-on cue): that attempt failed", "[info]")
+
+
 # H6 / SC-004 ----------------------------------------------------------------------------------
 
 
@@ -448,6 +555,16 @@ def test_h6_counts_one_press_per_cue_and_reports_the_extra_ones(
 def test_h6_does_not_let_one_press_serve_two_cues(tmp_path: Path, clock: FakeClock) -> None:
     between = (H6_CUES[0] + H6_CUES[1]) / 2 + 1.0  # inside both the first and the second window
     assert not _ok(_h6(tmp_path, clock, [between, H6_CUES[2]]))
+
+
+@pytest.mark.parametrize("third", [H6_CUES[2] - READY_S - 0.5, H6_CUES[2] + 5.5])
+def test_h6_fails_a_press_outside_the_window_of_its_cue(
+    tmp_path: Path, clock: FakeClock, third: float
+) -> None:
+    result = _h6(tmp_path, clock, [H6_CUES[0] + 0.8, H6_CUES[1] + 0.8, third])
+    assert not _ok(result)
+    assert _said(result, "press 3: none in its window", "[FAIL]")
+    assert _said(result, "3 SPACE markers, 1 extra", "[info]")
 
 
 # H7 / SC-005 ----------------------------------------------------------------------------------
@@ -573,6 +690,25 @@ def test_h8_fails_a_sensor_that_already_looked_lifted_at_rest(
     result = _h8(tmp_path, clock, lift="flat", rest_flat=True)
     assert not _ok(result)
     assert _said(result, "at rest", "[FAIL]")
+
+
+def test_h8_fails_a_channel_that_goes_flat_while_blinking(tmp_path: Path, clock: FakeClock) -> None:
+    at = _at("H8")
+    following = _h8_eeg()
+
+    def shape(rel: FloatArray) -> FloatArray:
+        x = following(rel)
+        x[rel >= at["blink"], 2] = 0.0  # AF8 loses its signal for the whole blink phase
+        return x
+
+    session = _record(
+        tmp_path, clock, [(0, CHECKS["H8"].duration)], eeg=shape, markers=_cue_markers("H8")
+    )
+    result = CHECKS["H8"].evaluate(session)
+    assert not _ok(result)
+    failed = [line for line in result.lines if line.startswith("[FAIL]")]
+    assert len(failed) == 1
+    assert "no channel went flat or railed: AF8 did in 100% of windows" in failed[0]
 
 
 def test_h8_keeps_the_numbers_and_reports_labels_and_blinks(
@@ -712,6 +848,47 @@ def test_f1_confirms_wire_order_on_top_of_the_ambient_pedestal(
     assert result.measures["room_light.OPT5.median"] == pytest.approx(342_800, abs=30)
     for phase in ("on head", "room light", "covered", "light again"):
         assert _said(result, f"{phase}: 1:", "[info]")  # medians of all 16 rows, every time
+
+
+def test_f1_passes_when_a_weak_led_row_also_picks_up_room_light(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    # OPT3 and OPT4 sit near their offset on the head (about 500 counts). Covered they read the
+    # same, and off the head the room light adds to them: they behave as ambient rows too.
+    at = _at("F1")
+    base = _f1_optics()
+
+    def shape(rel: FloatArray) -> FloatArray:
+        x = base(rel)
+        covered = (rel >= at["dark"]) & (rel < at["light_again"])
+        lit = (rel >= at["room_light"]) & ~covered
+        for row in (2, 3):
+            x[:, row] = HEAD[row] + RNG.normal(0, NOISE[row], rel.size) + np.where(lit, 3000.0, 0)
+        return x
+
+    result = _f1(tmp_path, clock, shape)
+    assert _ok(result)
+    assert _said(result, "OPT5, OPT6, OPT7, OPT8: BrainFlow wire order", "[ok]")
+    assert _said(result, "OPT3, OPT4 also behaved as ambient light", "[info]")
+    assert [n for n in range(1, 17) if result.measures[f"ambient.OPT{n}"]] == [3, 4, 5, 6, 7, 8]
+
+
+def test_f1_fails_when_a_libmuse_ambient_row_qualifies_beside_the_wire_ones(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    at = _at("F1")
+    base = _f1_optics()
+
+    def shape(rel: FloatArray) -> FloatArray:
+        x = base(rel)
+        covered = (rel >= at["dark"]) & (rel < at["light_again"])
+        lit = (rel >= at["room_light"]) & ~covered
+        x[:, 10] = HEAD[10] + RNG.normal(0, NOISE[10], rel.size) + np.where(lit, 9000.0, 0)
+        return x
+
+    result = _f1(tmp_path, clock, shape)
+    assert not _ok(result)
+    assert _said(result, "OPT5, OPT6, OPT7, OPT8, OPT11: neither known order", "[FAIL]")
 
 
 def test_f1_fails_and_names_libmuse_order(tmp_path: Path, clock: FakeClock) -> None:

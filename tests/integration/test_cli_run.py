@@ -242,6 +242,33 @@ def test_closed_gap_is_not_saved_twice(tmp_path: Path, clock: FakeClock) -> None
     assert gap.end is not None
 
 
+def test_the_steps_of_a_reconnect_are_saved_with_the_session(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    t0 = clock.now
+
+    class Gone(Sim):
+        def start(self) -> None:
+            clock.advance(3.0)
+            raise SourceError("no device")
+
+    sources = iter([Sim(clock, dropouts=[(1.0, 1e9)]), Gone(clock)])
+    _record(tmp_path, clock, lambda: next(sources, Sim(clock)), 12.0)
+    session = _session(tmp_path)
+    assert [(s.what, s.detail) for s in session.reconnects] == [
+        ("lost", "stall"),
+        ("released", None),
+        ("attempt", None),
+        ("failed", "no device"),
+        ("attempt", None),
+        ("connected", None),
+        ("first_sample", None),
+    ]
+    assert session.reconnects[0].t - t0 == pytest.approx(4.0, abs=0.1)  # 3 s after the last sample
+    (gap,) = session.gaps
+    assert session.reconnects[-1].t == pytest.approx(gap.end, abs=0.1)
+
+
 # Keys and view -----------------------------------------------------------------------------
 
 

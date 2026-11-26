@@ -24,7 +24,7 @@ from mufuse.acquisition.signal_check import NOISY_UV, classify_channel, spread_u
 from mufuse.acquisition.simulated import CTRL_C, Wearer
 from mufuse.acquisition.types import FloatArray, StreamKind
 from mufuse.guide import READY_S, Cue, Guide, action
-from mufuse.recording.format import Gap
+from mufuse.recording.format import Gap, ReconnectWhat
 from mufuse.recording.reader import LoadedSession
 
 
@@ -53,6 +53,9 @@ class _Report:
         self.measures[name] = round(float(value), 4)
 
 
+EARLY_S = 5.0  # a recording this much shorter than its check was stopped by hand
+
+
 @dataclass(frozen=True)
 class Check:
     id: str
@@ -71,6 +74,22 @@ class Check:
 
     def evaluate(self, session: LoadedSession) -> Result:
         report = _Report()
+        ts, _ = _eeg(session)
+        ended: float | None = session.manifest.get("ended_at")
+        length = 0.0 if ended is None else float(ended) - _t0(session)
+        if ts.size == 0:
+            report.check(
+                False,
+                "no samples were recorded at all: the connection was made but nothing arrived; "
+                "retry",
+            )
+        elif self.id != "H7" and ended is not None and length < self.duration - EARLY_S:
+            # H7 asks for the stop. Anywhere else the cues after it were never shown.
+            report.check(
+                False,
+                f"the recording was stopped after {length:.0f} s of {self.duration:.0f} s "
+                "(q or Ctrl+C): retry",
+            )
         self._judge(self, session, report)
         # The battery level is the last optics column; it reads 0 until the headband reports it.
         _, optics = session.streams.get(StreamKind.OPTICS, (np.empty(0), np.empty((0, 17))))
@@ -177,9 +196,30 @@ OFF_LATE_S = 8.0  # holding the power button takes a moment
 # A real off-and-on cannot be shorter: 3 s until the stall is noticed, 1 s of backoff, and
 # 4-6 s to connect again.
 MIN_GAP_S = 8.0
+_STEP: dict[ReconnectWhat, str] = {
+    "lost": "the signal counted as lost",
+    "released": "the old connection was let go",
+    "attempt": "an attempt to connect began",
+    "failed": "that attempt failed",
+    "connected": "connected",
+    "first_sample": "the first sample arrived",
+}
 
 
 def _judge_h5(check: Check, session: LoadedSession, r: _Report) -> None:
+    _h5_rules(check, session, r)
+    # Where the time away went, as the recorder's supervisor saw it: not judged.
+    t0, on = _t0(session), check.at("power_on")
+    for step in session.reconnects:
+        at = step.t - t0
+        detail = f" ({step.detail})" if step.detail else ""
+        r.info(
+            f"reconnect +{at:.1f} s ({at - on:+.1f} s from the power-on cue): "
+            f"{_STEP[step.what]}{detail}"
+        )
+
+
+def _h5_rules(check: Check, session: LoadedSession, r: _Report) -> None:
     t0 = _t0(session)
     off, on = check.at("power_off"), check.at("power_on")
     at_cue = [g for g in session.gaps if -READY_S <= g.start - t0 - off <= OFF_LATE_S]
@@ -238,10 +278,6 @@ def _judge_h5(check: Check, session: LoadedSession, r: _Report) -> None:
     r.info(
         f"timeline: off cue +{off:.0f} s · signal stopped +{stopped:.1f} s · on cue +{on:.0f} s "
         f"· signal back +{back:.1f} s · recording ended +{ended:.1f} s · reason {gap.reason}"
-    )
-    r.info(
-        "of the time away, about 3 s is the recorder noticing the stall and 5-7 s is "
-        "reconnecting once the headband is on; the rest is the headband being off or starting up"
     )
 
 
@@ -602,6 +638,10 @@ def _rows(indices: np.ndarray) -> tuple[int, ...]:
     return tuple(sorted(int(i) + 1 for i in indices))
 
 
+def _opt(rows: tuple[int, ...]) -> str:
+    return f"OPT{', OPT'.join(map(str, rows))}"
+
+
 def _judge_f1(check: Check, session: LoadedSession, r: _Report) -> None:
     if StreamKind.OPTICS not in session.streams:
         r.check(False, "no optics stream in this session (use preset p1041 or p1042)")
@@ -647,22 +687,31 @@ def _judge_f1(check: Check, session: LoadedSession, r: _Report) -> None:
                 "the cover let light through: rows that rose in room light did not come back "
                 "to their on-head level when covered; cover the sensors completely",
             )
+    # The two known orders differ in where the ambient rows are, so wire order is confirmed when
+    # all of OPT5-8 behave as ambient and none of libMuse's ambient rows does. Another row that
+    # does too (a weak LED row near its offset can pick up room light) is reported, not judged.
+    wire = set(AMBIENT_WIRE) <= set(ambient) and not set(AMBIENT_LIBMUSE) & set(ambient)
+    also = () if not wire else tuple(n for n in ambient if n not in AMBIENT_WIRE)
+    shown = tuple(n for n in ambient if n not in also)
     known = {AMBIENT_WIRE: "BrainFlow wire order", AMBIENT_LIBMUSE: "libMuse order"}
-    named = f"OPT{', OPT'.join(map(str, ambient))}" if ambient else "no row"
+    named = _opt(shown) if shown else "no row"
     r.check(
-        ambient == AMBIENT_WIRE,
-        f"ambient light shows on {named}: {known.get(ambient, 'neither known order')} "
-        "(expected OPT5-8 for BrainFlow wire order). Ambient rows read the same covered as on "
-        f"the head (within {PEDESTAL_MATCH:.0%}) and rise ≥ {LIGHT_RISE:.0f} counts in room light",
+        wire,
+        f"ambient light shows on {named}: {known.get(shown, 'neither known order')} "
+        "(expected OPT5-8 for BrainFlow wire order, and none of OPT11, 12, 15, 16). Ambient rows "
+        f"read the same covered as on the head (within {PEDESTAL_MATCH:.0%}) and rise "
+        f"≥ {LIGHT_RISE:.0f} counts in room light",
     )
+    if also:
+        r.info(
+            f"{_opt(also)} also behaved as ambient light: not held against the check, since no "
+            "known order puts ambient light there"
+        )
     pulse = _pulsatility(windows[0])
     for i, share in enumerate(pulse):
         r.measure(f"on_head.OPT{i + 1}.pulse_share", share)
     weakest = _rows(np.argsort(pulse)[:4])
-    r.info(
-        f"least pulse on the head: OPT{', OPT'.join(map(str, weakest))} "
-        f"(ambient channels should carry no heartbeat)"
-    )
+    r.info(f"least pulse on the head: {_opt(weakest)} (ambient channels should carry no heartbeat)")
 
 
 # The checks -----------------------------------------------------------------------------------

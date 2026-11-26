@@ -8,7 +8,7 @@ import pytest
 
 from mufuse.acquisition.athena import ATHENA_STREAMS
 from mufuse.acquisition.types import Chunk, DeviceInfo, StreamKind
-from mufuse.recording.format import FORMAT_VERSION, Gap, Marker, new_session_id
+from mufuse.recording.format import FORMAT_VERSION, Gap, Marker, ReconnectStep, new_session_id
 from mufuse.recording.reader import load_session
 from mufuse.recording.writer import SessionWriter
 from tests.conftest import FakeClock
@@ -72,6 +72,24 @@ def test_gaps_persist(writer: SessionWriter, clock: FakeClock) -> None:
     gap = load_session(writer.session_dir).gaps[0]
     assert gap.reason == "stall"
     assert gap.end == pytest.approx(gap.start + 3)
+
+
+def test_reconnect_steps_persist(writer: SessionWriter, clock: FakeClock) -> None:
+    steps = [
+        ReconnectStep(clock.now, "lost", "stall"),
+        ReconnectStep(clock.now + 1.0, "attempt"),
+        ReconnectStep(clock.now + 17.0, "failed", "no device"),
+    ]
+    for step in steps:
+        writer.add_reconnect_step(step)
+    writer.close_files()  # as after a crash: every step was flushed when it happened
+    assert load_session(writer.session_dir).reconnects == steps
+
+
+def test_session_from_before_reconnect_steps_has_none(writer: SessionWriter) -> None:
+    writer.finalize()
+    (writer.session_dir / "reconnects.jsonl").unlink()
+    assert load_session(writer.session_dir).reconnects == []
 
 
 def test_unfinalized_session_with_partial_row_is_readable(writer: SessionWriter) -> None:
