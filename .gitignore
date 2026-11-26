@@ -221,3 +221,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# MuFuse: personal neural data never goes in the repo
+recordings/
+data/
+*.fif
+*.xdf
+*.parquet
+!tests/data/**
