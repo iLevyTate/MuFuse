@@ -16,6 +16,29 @@ Date: 2026-11-25. Scope: every public resource found on the Athena's optical sen
 4. No validated open Athena HbO/HbR pipeline exists.
 5. We must validate channel identity and geometry on our own unit before trusting any HbO/HbR number.
 
+## Update 2026-11-26: channel order resolved (A vs B are two layers, not rivals)
+
+- **BrainFlow board 67 rows are B (wire order).** 1-based: OPT1-4 red (660 nm), OPT5-8 ambient,
+  OPT9-12 730 nm, OPT13-16 850 nm; within each group LI, RI, LO, RO. BrainFlow's
+  `get_optics_canonical_index` returns the wire index unchanged and
+  `MUSE_ATHENA_OPTICS_SCALE_FACTOR` is 1.0, so values are raw counts. **VERIFIED (code).**
+- **A is libMuse's reordered output** (what Mind Monitor shows). libMuse 8.0.9's `IXNOptics.h`
+  defines OPTICS1-16 as order A in microamps (mirrored in a public repo, 2026-05-26).
+  **VERIFIED (official header, via mirror).** A reorder table reported from the Android libMuse,
+  `canonical[i] = wire[(10,11,14,15,8,9,12,13,2,3,6,7,0,1,4,5)[i]]`, maps B onto A exactly.
+  **UNVERIFIED (claimed).**
+- Independent measurements agree with B on the wire: JHees (fw 3.1.19; flashlight, darkness,
+  band-pass filters; OpenMuse #24, 2026-06-03) and OpenMuse PR #31 "Fix Optics16 channel mapping"
+  (2026-10-20, open). nijave reports the same order on fw 3.1.19, 3.1.23 and 3.1.29 (claimed).
+  OpenMuse `main` still carries the old labels; its Jan 2026 correlation summary likely scored
+  data against those labels.
+- Consequence for MuFuse: treat BrainFlow rows as B. Detector grouping (flashlight) and breath-hold
+  tests are no longer needed to settle order. Keep one cheap on-unit check: guided **F1**
+  (`scripts/hw_acceptance.py F1`) confirms OPT5-8 go dark in darkness and carry no heartbeat on
+  the head. Record firmware with sessions (BrainFlow only logs the `fw` status field at debug level).
+- Still open: optode geometry and source-detector distances (FCC 2ABZI-MS03 internal photos were
+  not accessible), and the raw-count to microamp scale.
+
 ---
 
 ## 1. Hardware facts

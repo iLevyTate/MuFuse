@@ -22,7 +22,8 @@ DEFAULT_PRESET = "p1041"
 
 _EEG = ("TP9", "AF7", "AF8", "TP10", "AUX1", "AUX2", "AUX3", "AUX4")
 _MOTION = ("ACC_X", "ACC_Y", "ACC_Z", "GYRO_X", "GYRO_Y", "GYRO_Z")
-# BrainFlow always exposes 16 optical rows; presets with fewer optics leave the rest unused.
+# BrainFlow always exposes 16 optical rows; presets with fewer optics leave the rest unused. They
+# arrive in wire order: OPT1-4 red, 5-8 ambient, 9-12 730 nm, 13-16 850 nm (LI, RI, LO, RO).
 _OPTICS = (*(f"OPT{i}" for i in range(1, 17)), "BATTERY")
 
 ATHENA_STREAMS: MappingProxyType[StreamKind, StreamSpec] = MappingProxyType(

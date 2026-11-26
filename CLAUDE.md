@@ -33,8 +33,9 @@ uv run mufuse stream --source sim         # live view without hardware
 - Only one device can connect to the headband; the phone Muse app must be closed.
 - Never commit personal recordings (`recordings/` is git-ignored); the repo is public.
 - Inject clocks (`tests/conftest.py::FakeClock`) for anything time-dependent.
-- fNIRS hemoglobin is experimental until feature 004's validation passes; channel order is unverified
-  (see `docs/research/2026-11-25-athena-fnirs-resources.md`).
+- fNIRS hemoglobin is experimental until feature 004's validation passes. BrainFlow optics rows are
+  in wire order (OPT1-4 red, 5-8 ambient, 9-12 730 nm, 13-16 850 nm), not Mind Monitor's order;
+  guided check F1 confirms it per unit (see `docs/research/2026-11-25-athena-fnirs-resources.md`).
 - User-facing language: describe signal changes vs. personal baseline; never "you are anxious".
 - Brand tokens, logo rules and the InteraXon notice: `docs/BRAND.md`. Status colours grade
   signal quality only, never the person.
