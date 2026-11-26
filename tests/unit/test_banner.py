@@ -30,14 +30,14 @@ def test_banner_is_ascii_so_any_terminal_font_renders_it() -> None:
 
 def test_banner_fits_an_80_column_terminal_in_under_8_lines() -> None:
     console, buf = _console(terminal=True)
-    status = "MuseS-C27F · preset p1041 · " + "x" * 200
+    status = "MuseS-1A2B · preset p1041 · " + "x" * 200
     assert print_banner(console, status)
     lines = buf.getvalue().rstrip("\n").split("\n")
     assert len(lines) == HEIGHT_LINES < 8
     assert max(len(line) for line in lines) <= MAX_WIDTH
     assert "MuFuse v" in buf.getvalue()
     assert "Punk EEG." in buf.getvalue()
-    assert "MuseS-C27F" in buf.getvalue()
+    assert "MuseS-1A2B" in buf.getvalue()
 
 
 def test_banner_colours_impulse_orange_and_mu_white() -> None:

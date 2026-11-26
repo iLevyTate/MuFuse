@@ -29,7 +29,7 @@ def main() -> int:
     ap.add_argument("--threshold", type=float, default=15.0, help="pass if EEG within N s")
     ap.add_argument("--need", type=int, default=9, help="attempts that must pass")
     ap.add_argument("--timeout", type=float, default=60.0, help="kill a hung attempt after N s")
-    ap.add_argument("--device", help="headband name, e.g. MuseS-C27F")
+    ap.add_argument("--device", help="headband name, e.g. MuseS-1A2B")
     ap.add_argument("--source", default="athena", help="sim to dry-run without the headband")
     args = ap.parse_args()
 

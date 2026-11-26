@@ -21,7 +21,7 @@ def _run(
         at="2026-11-26T09:20:30",
         command="stream",
         source="athena",
-        device="MuseS-C27F",
+        device="MuseS-1A2B",
         preset="p1041",
         outcome=outcome,
         seconds_to_signal=seconds,

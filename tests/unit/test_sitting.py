@@ -8,10 +8,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
 
 from mufuse.acceptance import CHECKS, Check
 from mufuse.acceptance_report import ORDER, REASONS
+from mufuse.acquisition.types import StreamKind
 from mufuse.cli import EXIT_CONNECT, EXIT_WRITE
 from mufuse.recording.reader import LoadedSession
 from mufuse.runlog import ConnectRun, append_run
@@ -468,8 +470,9 @@ def test_only_a_folder_with_a_manifest_counts_as_the_new_session(tmp_path: Path)
 
 
 def _loaded(folder: Path) -> LoadedSession:
-    device = {"firmware": "3.1.19", "preset": "p1041", "name": "MuseS-C27F"}
-    return LoadedSession(folder, {"device": device}, {}, [], [])
+    device = {"firmware": "3.1.19", "preset": "p1041", "name": "MuseS-1A2B"}
+    eeg = (np.zeros(1), np.zeros((1, 8)))  # one sample: an empty recording fails by itself
+    return LoadedSession(folder, {"device": device}, {StreamKind.EEG: eeg}, [], [])
 
 
 def test_a_judge_that_raises_becomes_a_fail_with_the_exception_text(tmp_path: Path) -> None:
@@ -855,11 +858,11 @@ def test_a_check_is_one_guided_recording_tagged_with_the_check_and_the_run(tmp_p
     spawn = Spawned(out)
     (h6,) = plan(["H6"])
 
-    ran = _launcher(tmp_path, spawn, device="MuseS-C27F")(h6)
+    ran = _launcher(tmp_path, spawn, device="MuseS-1A2B")(h6)
 
     assert spawn.cmd == [
         "mufuse", "record", "--source", "athena", "--duration", "40.0",
-        "--notes", f"H6 acceptance {RUN}", "--out", str(out), "--device", "MuseS-C27F",
+        "--notes", f"H6 acceptance {RUN}", "--out", str(out), "--device", "MuseS-1A2B",
     ]  # fmt: skip
     assert spawn.env["MUFUSE_RUN_LABEL"] == f"H6 {RUN}"
     assert spawn.env["PYTHONUTF8"] == "1"
@@ -899,10 +902,10 @@ def test_h3_reuses_the_time_to_signal_script_and_keeps_what_it_measured(tmp_path
     spawn = H3(code=1)
     (h3,) = plan(["H3"])
 
-    ran = _launcher(tmp_path, spawn, source="sim", device="MuseS-C27F")(h3)
+    ran = _launcher(tmp_path, spawn, source="sim", device="MuseS-1A2B")(h3)
 
     script = tmp_path / "repo" / "scripts" / "h3_time_to_signal.py"
-    assert spawn.cmd == [sys.executable, str(script), "--source", "sim", "--device", "MuseS-C27F"]
+    assert spawn.cmd == [sys.executable, str(script), "--source", "sim", "--device", "MuseS-1A2B"]
     assert ran.code == 1
     assert ran.session is None
     assert ran.lines == (

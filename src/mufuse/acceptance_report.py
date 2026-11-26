@@ -90,7 +90,7 @@ _STREAMS = {"eeg": "EEG", "motion": "motion", "optics": "optics"}  # manifest na
 
 
 def mask_device(name: object) -> str | None:
-    """`MuseS-C27F` as `MuseS-****`: the family stays, what tells one headband from the next
+    """`MuseS-1A2B` as `MuseS-****`: the family stays, what tells one headband from the next
     goes. Anything that is not a Muse name is not kept at all."""
     found = _DEVICE.fullmatch(name) if isinstance(name, str) else None
     return f"{found[1]}-****" if found else None

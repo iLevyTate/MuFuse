@@ -747,7 +747,7 @@ def main(
         prog="hw_acceptance.py", description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
     ap.add_argument("checks", nargs="*", help="a subset, e.g. H5 F1 (default: the whole sitting)")
-    ap.add_argument("--device", help="headband name, e.g. MuseS-C27F")
+    ap.add_argument("--device", help="headband name, e.g. MuseS-1A2B")
     ap.add_argument("--out", type=Path, help="where sessions are saved (default: recordings)")
     ap.add_argument("--pause", action="store_true", help="wait for Enter before every check")
     ap.add_argument("--no-h3", action="store_true", help="leave out the ten connects of H3")
