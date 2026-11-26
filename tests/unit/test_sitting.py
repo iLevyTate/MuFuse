@@ -11,15 +11,18 @@ from typing import Any
 import pytest
 
 from mufuse.acceptance import CHECKS, Check
+from mufuse.acceptance_report import ORDER, REASONS
 from mufuse.cli import EXIT_CONNECT, EXIT_WRITE
 from mufuse.recording.reader import LoadedSession
 from mufuse.runlog import ConnectRun, append_run
 from mufuse.sitting import (
     COOLDOWN_S,
+    ENDED,
     FAIL,
     NOT_RUN,
     PASS,
     SKIPPED,
+    STEPS,
     Launcher,
     Ran,
     Sitting,
@@ -37,6 +40,8 @@ from mufuse.sitting import (
     settled,
     standing,
     to_resume,
+    versions,
+    write_report,
 )
 from tests.conftest import FakeClock
 
@@ -93,7 +98,8 @@ class Desk:
         scripted = self.verdicts.get(check.id)
         outcome = scripted.pop(0) if scripted else PASS
         mark = "ok" if outcome == PASS else "FAIL"
-        return Verdict(outcome, (f"[{mark}] judged {check.id}",), {"m": 1.5}, folder, "3.1.19")
+        lines = (f"[{mark}] judged {check.id}",)
+        return Verdict(outcome, lines, {"m": 1.5}, folder, "3.1.19", "p1041", "MuseS-****")
 
     def sitting(self, steps: list[Step], **changes: Any) -> Sitting:
         setup: dict[str, Any] = {
@@ -400,6 +406,8 @@ def test_each_attempt_is_a_row_a_later_reader_can_judge_from(desk: Desk) -> None
         "lines": ["[ok] judged P0"],
         "measures": {"m": 1.5},
         "firmware": "3.1.19",
+        "preset": "p1041",
+        "device": "MuseS-****",  # the family only: not which headband
         "session": "P0-1",  # the folder's name: no user name or drive in the evidence
         "source": "athena",
         "mufuse": "0.1.0",
@@ -460,7 +468,8 @@ def test_only_a_folder_with_a_manifest_counts_as_the_new_session(tmp_path: Path)
 
 
 def _loaded(folder: Path) -> LoadedSession:
-    return LoadedSession(folder, {"device": {"firmware": "3.1.19"}}, {}, [], [])
+    device = {"firmware": "3.1.19", "preset": "p1041", "name": "MuseS-C27F"}
+    return LoadedSession(folder, {"device": device}, {}, [], [])
 
 
 def test_a_judge_that_raises_becomes_a_fail_with_the_exception_text(tmp_path: Path) -> None:
@@ -476,7 +485,7 @@ def test_a_judge_that_raises_becomes_a_fail_with_the_exception_text(tmp_path: Pa
         "[FAIL] the session could not be judged: ZeroDivisionError: empty window",
     )
     assert verdict.session == tmp_path
-    assert verdict.firmware == "3.1.19"
+    assert (verdict.firmware, verdict.preset, verdict.device) == ("3.1.19", "p1041", "MuseS-****")
 
 
 def test_a_session_that_cannot_be_read_becomes_a_fail_too(tmp_path: Path) -> None:
@@ -493,7 +502,17 @@ def test_a_judged_session_carries_its_lines_measures_and_firmware(tmp_path: Path
 
     verdict = judged(Check("P0", "title", (), 5.0, (), judge), tmp_path, load=_loaded)
 
-    assert verdict == Verdict(PASS, ("[ok] all good",), {"x": 2.0}, tmp_path, "3.1.19")
+    assert verdict == Verdict(
+        PASS, ("[ok] all good",), {"x": 2.0}, tmp_path, "3.1.19", "p1041", "MuseS-****"
+    )
+
+
+def test_the_versions_name_the_operating_system_in_plain_words() -> None:
+    made = versions(REPO)
+
+    assert set(made) == {"mufuse", "brainflow", "commit", "os"}
+    assert made["os"]
+    assert all(part.replace(".", "").isalnum() for part in made["os"].split())
 
 
 def test_a_torn_line_in_the_results_file_is_skipped(tmp_path: Path) -> None:
@@ -505,6 +524,114 @@ def test_a_torn_line_in_the_results_file_is_skipped(tmp_path: Path) -> None:
 
 
 # Resume --------------------------------------------------------------------------------------
+
+
+# The report ----------------------------------------------------------------------------------
+
+
+def _report(desk: Desk, run: str = RUN) -> Path:
+    return desk.ledger.parent / "acceptance" / run / "report.md"
+
+
+def test_the_run_ends_with_a_report_beside_the_results_file(desk: Desk) -> None:
+    desk.verdicts = {"H8": [FAIL]}
+
+    desk.sitting([_step("P0"), _step("H8")]).run()
+
+    text = _report(desk).read_text(encoding="utf-8")
+    assert text.startswith(f"# MuFuse hardware acceptance, run {RUN}")
+    assert "1 of 2 requested checks passed" in text
+    assert "MuseS-****, preset p1041, firmware 3.1.19" in text
+    assert str(desk.out) not in text
+    assert desk.out.parent.name not in text  # the folder pytest made for this test
+    shown = desk.text.split("Summary of run", 1)[1]
+    assert f"Report: {_report(desk)}" in shown
+    assert "no paths, names, addresses or samples" in shown
+
+
+def test_the_report_of_a_rehearsal_is_marked_and_names_its_short_h4(desk: Desk) -> None:
+    desk.sitting(plan(["P0", "H4"], h4_seconds=30.0), source="sim").run()
+
+    (start,) = desk.rows("run")
+    assert start["h4_seconds"] == 30.0
+    text = _report(desk).read_text(encoding="utf-8")
+    assert "SIMULATOR REHEARSAL" in text
+    assert "--rehearse --h4-seconds 30 P0 H4" in text
+
+
+def test_a_sitting_with_the_full_h4_does_not_note_a_length(desk: Desk) -> None:
+    desk.sitting(plan(["H4"])).run()
+
+    assert "h4_seconds" not in desk.rows("run")[0]
+
+
+def test_the_report_lists_the_checks_in_the_sitting_order() -> None:
+    assert tuple(s.id for s in STEPS) == ORDER
+
+
+def test_every_reason_the_runner_gives_is_one_the_report_prints(desk: Desk) -> None:
+    desk.runs = {"P0": [Ran(EXIT_CONNECT)] * 3}
+    desk.answers = ["", "", "s", "q"]  # start, continue after P0, skip H8, quit at H6
+    steps = [_step(c) for c in ("P0", "H8", "H6", "H7")]
+    desk.sitting(steps, pause=True).run()
+    known = settled(plan([]), rehearse=False, platform="linux") | settled(plan([]), rehearse=True)
+
+    given = [r["lines"][0] for r in desk.rows()] + [v.lines[0] for v in known.values()]
+
+    assert [r["outcome"] for r in desk.rows()] == [NOT_RUN, SKIPPED, NOT_RUN, NOT_RUN]
+    assert len(set(given)) == 5
+    assert ENDED in given
+    assert set(given) <= set(REASONS)
+
+
+def test_a_run_id_that_is_not_a_plain_name_gets_no_report(desk: Desk) -> None:
+    desk.sitting([_step("P0")]).run()
+
+    assert write_report(desk.ledger, "../elsewhere", desk.say) is None
+    assert write_report(desk.ledger, "a/b", desk.say) is None
+    assert [p.name for p in (desk.ledger.parent / "acceptance").iterdir()] == [RUN]
+    assert sorted(p.name for p in desk.ledger.parent.iterdir()) == [
+        "acceptance",
+        "acceptance.jsonl",
+    ]
+
+
+def test_a_report_that_cannot_be_written_is_said_and_does_not_change_the_result(
+    desk: Desk, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken(rows: object, run: str) -> str:
+        raise ValueError("no table")
+
+    monkeypatch.setattr("mufuse.sitting.render", broken)
+
+    code = desk.sitting([_step("P0")]).run()
+
+    assert code == 0
+    assert not _report(desk).exists()
+    assert "The report could not be written: ValueError: no table" in desk.text
+
+
+def test_judging_again_writes_the_report_again(desk: Desk) -> None:
+    folder = _saved(desk.out, "H8-1", f"H8 acceptance {RUN}")
+    desk.verdicts = {"H8": [FAIL]}
+    desk.runs = {"H8": [Ran(0, folder)]}
+    desk.sitting([_step("H8")]).run()
+    assert "| FAIL | 1 |" in _report(desk).read_text(encoding="utf-8")
+    desk.said.clear()
+
+    rejudge(
+        [RUN, str(folder)],
+        out=desk.out,
+        ledger=desk.ledger,
+        versions=VERSIONS,
+        say=desk.say,
+        clock=desk.clock,
+        judge=desk.judge,
+    )
+
+    text = _report(desk).read_text(encoding="utf-8")
+    assert "| PASS (judged again; FAIL when recorded) | 1 |" in text
+    assert desk.text.count("Report: ") == 1  # once per run, however many of its sessions
 
 
 def _earlier_runs(desk: Desk) -> None:

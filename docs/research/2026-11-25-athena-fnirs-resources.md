@@ -55,6 +55,26 @@ Date: 2026-11-25. Scope: every public resource found on the Athena's optical sen
   from BrainFlow's debug log of the `v6` status reply) and shows it in the CLI banner, so a
   firmware change on our unit is visible immediately; re-run F1 if it changes.
 
+### Units when comparing with other tools (noted 2026-11-26)
+
+- **Optics: BrainFlow reports raw counts; OpenMuse and Mind Monitor divide by 32768.** A level
+  quoted from those tools is 32768 times smaller than the same level in a MuFuse session. The
+  ambient channels that "dropped to ~10 in darkness" (§1.3, measured through OpenMuse) therefore
+  read about 330 000 BrainFlow counts when dark (10 × 32768 = 327 680), not a level near zero.
+  **VERIFIED (code)** for the two scale factors; that raw/32768 is microamps stays UNVERIFIED.
+- **The ambient rows sit on that pedestal on the head as well.** In MuFuse's own recordings so
+  far (one unit) OPT5-8 read near 338 000 counts whatever the light: worn, they read about the
+  same as when covered, and room light adds to that level. So "ambient goes dark" cannot be
+  judged as "falls towards zero" in BrainFlow counts. Guided check F1 looks for the rows whose
+  covered level matches their on-head level (within 10%) and that rise by at least 1000 counts
+  in room light. The acceptance report prints the level of all 16 rows per phase in counts, and
+  gives the covered level of OPT5-8 divided by 32768 as well, for comparison with those tools.
+- **EEG full scale is about ±725 µV since BrainFlow 5.23** (14-bit counts at 1450/16383 µV per
+  count, centred on zero; see the scaling change above). A sensor off the skin saturates there,
+  so a threshold above it can never be reached: the channel check's rail threshold of 1000 µV
+  is one. The acceptance report says so under its calibration suggestions; the threshold itself
+  is tuned in feature 002.
+
 ---
 
 ## 1. Hardware facts

@@ -11,6 +11,8 @@ uv run pyright                            # strict types on src/
 uv run pytest -m "not hardware"           # CI suite (no headband)
 uv run pytest -m hardware -s              # needs headband on, Muse app closed
 uv run mufuse stream --source sim         # live view without hardware
+uv run python scripts/hw_acceptance.py             # every hardware check in one sitting
+uv run python scripts/hw_acceptance.py --rehearse  # the same on the simulator, no headband
 ```
 
 ## Workflow

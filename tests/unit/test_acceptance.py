@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from mufuse.acceptance import BOOT_S, CHECKS, Result, wearer_for, wearer_from_env
+from mufuse.acceptance import BOOT_S, CHECKS, LABELS, Result, wearer_for, wearer_from_env
 from mufuse.acquisition.athena import ATHENA_STREAMS
 from mufuse.acquisition.signal_check import classify_channel
 from mufuse.acquisition.simulated import CTRL_C, Wearer
@@ -284,6 +284,20 @@ def test_h4_passes_a_complete_ten_minutes(tmp_path: Path, clock: FakeClock) -> N
     assert result.measures["eeg.completeness_pct"] == 100.0
     assert result.measures["eeg.rate_hz"] == pytest.approx(256.0)
     assert result.measures["optics.rate_hz"] == pytest.approx(64.0)
+
+
+def test_h4_keeps_the_eeg_numbers_of_the_whole_recording_without_judging_them(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    short = replace(CHECKS["H4"], duration=60.0)
+    result = short.evaluate(_record(tmp_path, clock, [(0, 60)]))
+    assert _ok(result)
+    m = result.measures
+    assert m["whole.TP9.spread_uv"] == pytest.approx(11, abs=2)
+    assert m["whole.TP9.spread_p05_uv"] < m["whole.TP9.spread_uv"] < m["whole.TP9.spread_p95_uv"]
+    assert m["whole.AF7.ok_share"] == 1.0
+    assert _said(result, "over the whole recording", "[info]")
+    assert not _said(result, "over the whole recording", "[ok]")
 
 
 def test_h4_fails_when_samples_are_missing(tmp_path: Path, clock: FakeClock) -> None:
@@ -582,6 +596,43 @@ def test_h8_keeps_the_numbers_and_reports_labels_and_blinks(
     assert _said(result, "blink-like deflections", "[info]")
 
 
+def test_h8_keeps_the_spread_percentiles_and_every_label_share_for_calibration(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    m = _h8(tmp_path, clock, lift="flat").measures
+    for phase in ("rest", "lift", "clench", "blink"):
+        for ch in ("TP9", "AF7", "AF8", "TP10"):
+            low, mid, high = (m[f"{phase}.{ch}.spread{p}_uv"] for p in ("_p05", "", "_p95"))
+            assert low <= mid <= high
+            shares = [m[f"{phase}.{ch}.{label}_share"] for label in LABELS]
+            assert sum(shares) == pytest.approx(1.0, abs=1e-3)
+    assert m["rest.TP9.spread_p95_uv"] < m["clench.TP9.spread_p05_uv"]  # 11 µV against 60 more
+    assert m["lift.TP9.flat_share"] == 1.0
+    assert m["lift.TP9.ok_share"] == 0.0
+    assert m["rest.TP9.noisy_share"] == 0.0
+
+
+def test_every_check_keeps_the_last_battery_level_its_recording_saw(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    def draining(rel: FloatArray) -> FloatArray:
+        x = np.full((rel.size, 17), 5000.0)
+        x[:, 16] = np.where(rel < 10, 0.0, np.where(rel < 30, 64.0, 63.0))
+        return x
+
+    session = _record(tmp_path, clock, [(0, 40)], optics=draining, markers=_cue_markers("H6"))
+    assert CHECKS["H6"].evaluate(session).measures["battery_end_pct"] == 63.0
+    p0 = _p0(tmp_path / "p0", clock, optics=draining)
+    assert (p0.measures["battery_pct"], p0.measures["battery_end_pct"]) == (64.0, 63.0)
+
+
+def test_a_battery_level_that_was_never_reported_is_not_kept(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    session = _record(tmp_path, clock, [(0, 40)], optics=_p0_optics(0.0))
+    assert "battery_end_pct" not in CHECKS["H6"].evaluate(session).measures
+
+
 def test_h8_fails_a_recording_that_stopped_before_the_last_phase(
     tmp_path: Path, clock: FakeClock
 ) -> None:
@@ -668,6 +719,14 @@ def test_f1_fails_and_names_libmuse_order(tmp_path: Path, clock: FakeClock) -> N
     assert not _ok(result)
     assert _said(result, "OPT11, OPT12, OPT15, OPT16", "[FAIL]")
     assert _said(result, "libMuse order", "[FAIL]")
+
+
+def test_f1_keeps_which_rows_behaved_as_ambient_light(tmp_path: Path, clock: FakeClock) -> None:
+    wire = _f1(tmp_path / "wire", clock, _f1_optics()).measures
+    assert [n for n in range(1, 17) if wire[f"ambient.OPT{n}"]] == [5, 6, 7, 8]
+
+    libmuse = _f1(tmp_path / "libmuse", clock, _f1_optics(order=LIBMUSE)).measures
+    assert [n for n in range(1, 17) if libmuse[f"ambient.OPT{n}"]] == [11, 12, 15, 16]
 
 
 def test_f1_fails_an_idle_wearer_who_kept_the_headband_on(tmp_path: Path, clock: FakeClock) -> None:

@@ -26,8 +26,8 @@ Legend: `[P]` = parallelizable · `[US#]` = user story · Test tasks precede the
 ## Phase 5 — US1 Connect and see live signal (P1)
 - [ ] T014 [US1] **(owner: you — tests written, stub in place)** Tests: `signal_check.classify_channel` (flat / railed / noisy / ok) → implement
 - [x] T015 [US1] `config.py` last-device persistence (tests with tmp dir)
-- [ ] T016 [US1] **(code done; needs hardware run)** `discovery.py` bleak scan (hardware test only)
-- [ ] T017 [US1] **(code done; needs hardware run)** `brainflow_athena.py` real driver (hardware test: 30 s stream, all streams non-empty)
+- [ ] T016 [US1] **(code done; needs hardware run: step H1/H2 of `scripts/hw_acceptance.py`)** `discovery.py` bleak scan (hardware test only)
+- [ ] T017 [US1] **(code done; needs hardware run: step H1/H2 of `scripts/hw_acceptance.py`)** `brainflow_athena.py` real driver (hardware test: 30 s stream, all streams non-empty)
 - [x] T018 [US1] CLI `stream`, `devices`, `inspect` + rich live view (CliRunner tests with sim source)
 
 ## Phase 6 — US4 Survive dropouts (P2)
@@ -39,6 +39,6 @@ Legend: `[P]` = parallelizable · `[US#]` = user story · Test tasks precede the
 
 ## Phase 8 — Polish
 - [x] T022 CLI `record` with key markers; Ctrl+C finalization test
-- [ ] T023 Hardware acceptance run: SC-001…SC-005 checklist in `tests/hardware/README.md` **(checklist written; needs hardware run)**
+- [ ] T023 Hardware acceptance run: SC-001…SC-005 in one sitting, `uv run python scripts/hw_acceptance.py` (guide: `tests/hardware/README.md`). Done when a headband run passes every check and its `report.md` is in the pull request. **(runner, judges, report and simulator rehearsal written; needs hardware run)**
 - [x] T024 README quickstart
 - [ ] T025 Record headband firmware version in the manifest (fNIRS research: firmware changed optics channel behavior)

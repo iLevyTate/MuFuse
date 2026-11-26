@@ -1,4 +1,5 @@
-"""Guided hardware acceptance for 001 (tests/hardware/README.md): preflight P0, H4-H8, then F1.
+"""Guided hardware acceptance for 001 (tests/hardware/README.md): preflight P0, H8, H6, H7, H5,
+F1, then H4.
 
 Each check is a guided recording: what to read before starting, timed on-screen cues, and an
 automatic verdict computed from the saved session. Cue times are seconds after streaming starts,
@@ -71,6 +72,11 @@ class Check:
     def evaluate(self, session: LoadedSession) -> Result:
         report = _Report()
         self._judge(self, session, report)
+        # The battery level is the last optics column; it reads 0 until the headband reports it.
+        _, optics = session.streams.get(StreamKind.OPTICS, (np.empty(0), np.empty((0, 17))))
+        reported = optics[optics[:, -1] > 0, -1]
+        if reported.size:
+            report.measure("battery_end_pct", reported[-1])
         return Result(self.id, report.passed, tuple(report.lines), report.measures)
 
 
@@ -158,6 +164,10 @@ def _judge_h4(check: Check, session: LoadedSession, r: _Report) -> None:
     r.info(f"gaps recorded: {len(session.gaps)}")
     for gap in session.gaps:
         r.info(_gap_text(gap, _t0(session)))
+    # Not judged: the long recording's own numbers, for tuning the channel check (feature 002).
+    # Windows side by side: a quarter of the work on ten minutes.
+    whole = _phase(session, 0.0, span, step=WINDOW_S)
+    _describe(r, "whole", "over the whole recording", whole)
 
 
 # H5 / SC-003 -------------------------------------------------------------------------------
@@ -300,6 +310,7 @@ FLAT_PTP_UV = 2.0  # peak-to-peak below this: no signal at all
 CHANGE_FACTOR = 3.0  # a window changed when its std is this many times the rest std
 REST_FLOOR_UV = 5.0  # ... and the rest std counts as at least this
 MAINS_HZ = (50, 60)
+LABELS = ("ok", "noisy", "flat", "railed")  # what the live indicator can call a window
 DEFLECTION_FACTOR = 5.0  # blink-like: this many rest spreads away from the phase's median
 
 
@@ -325,7 +336,7 @@ class _Phase:
         return int(self.std.shape[0])
 
 
-def _phase(session: LoadedSession, start: float, end: float) -> _Phase:
+def _phase(session: LoadedSession, start: float, end: float, step: float = STEP_S) -> _Phase:
     """The EEG over [start + settle, end) seconds after the recording started."""
     ts, data = _eeg(session)
     t0 = _t0(session)
@@ -335,7 +346,7 @@ def _phase(session: LoadedSession, start: float, end: float) -> _Phase:
         win = data[(ts >= a) & (ts < a + WINDOW_S), :4]
         if win.shape[0] >= WINDOW_S * _EEG_HZ / 2:  # at most half of it missing
             wins.append(win)
-        a += STEP_S
+        a += step
     samples = data[(ts >= t0 + start + SETTLE_S) & (ts < t0 + end), :4]
     centred = [w - w.mean(axis=0) for w in wins]
     near_rail = (1 - RAIL_MARGIN) * EEG_RANGE_UV
@@ -362,18 +373,22 @@ def _describe(r: _Report, name: str, title: str, p: _Phase) -> None:
         r.info(f"{title}: no EEG recorded")
         return
     std, spread, ptp = (np.median(v, axis=0) for v in (p.std, p.spread, p.ptp))
+    low, high = np.percentile(p.spread, (5, 95), axis=0)
     rail = p.rail.mean(axis=0)
     labels: list[str] = []
     for i, ch in enumerate(_CHANNELS):
         r.measure(f"{name}.{ch}.std_uv", std[i])
         r.measure(f"{name}.{ch}.spread_uv", spread[i])
+        r.measure(f"{name}.{ch}.spread_p05_uv", low[i])
+        r.measure(f"{name}.{ch}.spread_p95_uv", high[i])
         r.measure(f"{name}.{ch}.ptp_uv", ptp[i])
         r.measure(f"{name}.{ch}.rail_share", rail[i])
         for hz, share in zip(MAINS_HZ, p.mains[:, i], strict=True):
             r.measure(f"{name}.{ch}.mains_{hz}hz_share", share)
         seen = [row[i] for row in p.labels]
         shares = {label: seen.count(label) / len(seen) for label in dict.fromkeys(seen)}
-        r.measure(f"{name}.{ch}.ok_share", shares.get("ok", 0.0))
+        for label in LABELS:
+            r.measure(f"{name}.{ch}.{label}_share", shares.get(label, 0.0))
         labels.append(f"{ch} " + " ".join(f"{label} {s:.0%}" for label, s in shares.items()))
     numbers = "  ".join(
         f"{ch} {std[i]:.0f}/{spread[i]:.0f}/{ptp[i]:.0f}" for i, ch in enumerate(_CHANNELS)
@@ -609,6 +624,8 @@ def _judge_f1(check: Check, session: LoadedSession, r: _Report) -> None:
     lit = np.minimum(light_1, light_2)
     steady = np.abs(head - dark) <= PEDESTAL_MATCH * np.maximum(np.maximum(head, dark), 1.0)
     ambient = _rows(np.flatnonzero(steady & (lit - dark >= LIGHT_RISE)))
+    for n in range(1, 17):
+        r.measure(f"ambient.OPT{n}", n in ambient)
     for title, diff in (
         ("room light over covered", lit - dark),
         ("covered over on head", dark - head),

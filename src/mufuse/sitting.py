@@ -11,7 +11,8 @@ H3, H1/H2). After one Enter each check starts by itself after a 10 s countdown, 
 the pause the headband needs between a release and the next connect. A FAIL always stops and
 waits. Every attempt is one row in `acceptance.jsonl` beside the connection log, written before
 its verdict is shown, and every recording stays on disk so it can be judged again later
-without the headband.
+without the headband. The run ends with a report of its numbers, `acceptance/<run>/report.md`
+beside that file, that holds nothing personal and can be pasted into the pull request.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ import argparse
 import json
 import math
 import os
+import platform
 import re
 import shutil
 import signal
@@ -36,6 +38,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from mufuse.acceptance import CHECKS, Check
+from mufuse.acceptance_report import COMMAND, mask_device, render
 from mufuse.cli import EXIT_CONNECT, use_utf8_output
 from mufuse.recording.reader import LoadedSession, load_session
 from mufuse.runlog import log_path, read_runs, summarize
@@ -44,7 +47,6 @@ PASS, FAIL, SKIPPED, NOT_RUN = "PASS", "FAIL", "SKIPPED", "NOT RUN"
 COOLDOWN_S = 10.0  # from a release of the headband to the next connect; also the intermission
 CONNECT_TRIES = 3
 H3_WITHIN_S = 15.0  # SC-001, as in scripts/h3_time_to_signal.py, whose exit code is the verdict
-COMMAND = "uv run python scripts/hw_acceptance.py"
 ENDED = "the run was ended before this check"
 
 Row = dict[str, Any]  # one line of acceptance.jsonl
@@ -84,6 +86,8 @@ class Verdict:
     measures: dict[str, float] = field(default_factory=dict[str, float])
     session: Path | None = None
     firmware: str | None = None
+    preset: str | None = None
+    device: str | None = None  # masked: the family of the headband, not which one
 
 
 # The plan ------------------------------------------------------------------------------------
@@ -167,16 +171,16 @@ def judged(
 ) -> Verdict:
     """The verdict on a saved session. A reader or judge that raises is a FAIL with the
     exception text, never the end of the sitting: the session stays on disk to judge again."""
-    firmware: str | None = None
+    worn: tuple[str | None, str | None, str | None] = (None, None, None)
     try:
         session = load(folder)
         device: dict[str, Any] = session.manifest.get("device") or {}
-        firmware = device.get("firmware")
+        worn = (device.get("firmware"), device.get("preset"), mask_device(device.get("name")))
         result = check.evaluate(session)
     except Exception as exc:
         line = f"[FAIL] the session could not be judged: {type(exc).__name__}: {exc}"
-        return Verdict(FAIL, (line,), {}, folder, firmware)
-    return Verdict(PASS if result.passed else FAIL, result.lines, result.measures, folder, firmware)
+        return Verdict(FAIL, (line,), {}, folder, *worn)
+    return Verdict(PASS if result.passed else FAIL, result.lines, result.measures, folder, *worn)
 
 
 def read_rows(path: Path) -> list[Row]:
@@ -219,6 +223,8 @@ def _attempt_row(
         "lines": list(verdict.lines),
         "measures": verdict.measures,
         "firmware": verdict.firmware,
+        "preset": verdict.preset,
+        "device": verdict.device,
         "session": verdict.session.name if verdict.session else None,  # never a personal path
         "source": source,
         **versions,
@@ -226,14 +232,42 @@ def _attempt_row(
 
 
 def versions(repo: Path) -> dict[str, str | None]:
-    """What produced a verdict: the two packages and the commit the judges were at."""
+    """What produced a verdict: the two packages, the commit the judges were at and the
+    operating system."""
     cmd = ["git", "-C", str(repo), "describe", "--always", "--dirty", "--exclude", "*"]
     try:
         done = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=10)
         commit = done.stdout.strip() or None
     except (OSError, subprocess.SubprocessError):
         commit = None
-    return {"mufuse": version("mufuse"), "brainflow": version("brainflow"), "commit": commit}
+    return {
+        "mufuse": version("mufuse"),
+        "brainflow": version("brainflow"),
+        "commit": commit,
+        "os": f"{platform.system()} {platform.release()}",
+    }
+
+
+_RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")  # it names a folder
+
+
+def write_report(ledger: Path, run: str, say: Say) -> Path | None:
+    """Write the report of `run` to `acceptance/<run>/report.md` beside the results file and
+    say where it is. A report that cannot be made is said, never raised: the verdicts are
+    already saved and the run's result does not depend on it."""
+    if not _RUN_ID.fullmatch(run):
+        return None
+    path = ledger.parent / "acceptance" / run / "report.md"
+    try:
+        text = render(read_rows(ledger), run)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8", newline="\n")
+    except Exception as exc:
+        say(f"The report could not be written: {type(exc).__name__}: {exc}")
+        return None
+    say(f"Report: {path}")
+    say("  It holds no paths, names, addresses or samples: it can go into the pull request.")
+    return path
 
 
 def standing(rows: Sequence[Row], source: str) -> dict[str, str]:
@@ -305,7 +339,11 @@ class Sitting:
             self.history[0]["checks"] if self.history else [s.id for s in self.steps]
         )
         if not self.history:
-            self._write({"kind": "run", "checks": requested})
+            start: Row = {"kind": "run", "checks": requested}
+            h4 = next((s for s in self.steps if s.id == "H4"), None)
+            if h4 is not None and h4.seconds != CHECKS["H4"].duration:
+                start["h4_seconds"] = h4.seconds  # a rehearsal's shorter H4, for the report
+            self._write(start)
         self._outcomes = standing(self.history, self.source)
         self._attempts_made = Counter(
             r["check"] for r in self.history if r.get("kind") == "attempt"
@@ -477,6 +515,7 @@ class Sitting:
             self.say("This ran on the simulator: it is not hardware evidence.")
         elif not ok:
             self.say(f"To run only what has not passed: {COMMAND} --resume {self.run_id}")
+        write_report(self.ledger, self.run_id, self.say)
         return 0 if ok else 1
 
 
@@ -531,6 +570,7 @@ def rejudge(
     each of its checks. Rows are appended and marked; nothing already written is changed."""
     rows = read_rows(ledger)
     folders: list[Path] = []
+    runs: list[str] = []  # the runs that got a row here, for their reports
     ok = True
     for target in targets:
         if Path(target).is_dir():
@@ -574,6 +614,10 @@ def rejudge(
         _show(say, check_id, verdict)
         say()
         ok &= verdict.outcome == PASS
+        if run not in runs:
+            runs.append(run)
+    for run in runs:
+        write_report(ledger, run, say)
     return 0 if ok else 1
 
 

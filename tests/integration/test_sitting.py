@@ -113,6 +113,17 @@ def test_a_rehearsal_runs_unattended_and_leaves_rows_and_sessions(
     assert attempts[0]["measures"]
     assert "3 of 4 passed" in shown
     assert "not hardware evidence" in shown
+    report = logs / "acceptance" / rows[0]["run"] / "report.md"
+    assert f"Report: {report}" in shown
+    text = report.read_text(encoding="utf-8")
+    assert "SIMULATOR REHEARSAL: not hardware evidence" in text.splitlines()[2]
+    assert "3 of 4 requested checks passed" in text
+    assert "--rehearse --h4-seconds 30 P0 H7 H4 H1/H2" in text
+    assert "| P0 sitting still |" in text  # the calibration tables, from the real judges
+    assert "| H4 whole recording" in text
+    assert "- H1/H2: SKIPPED. Reason: the hardware tests need the real headband." in text
+    for private in (str(tmp_path), tmp_path.name, "Users", *sessions):
+        assert private not in text, private
 
 
 def test_a_failed_check_can_be_judged_again_from_what_was_saved(
@@ -143,7 +154,11 @@ def test_a_failed_check_can_be_judged_again_from_what_was_saved(
     assert again["lines"] == attempt["lines"]  # the same judges on the same saved session
     assert again["session"] == session.name
     assert again["source"] == "sim"
-    assert "H8: FAIL" in capsys.readouterr().out
+    shown = capsys.readouterr().out
+    assert "H8: FAIL" in shown
+    report = logs / "acceptance" / run / "report.md"
+    assert f"Report: {report}" in shown
+    assert "| FAIL (judged again, same outcome) | 1 |" in report.read_text(encoding="utf-8")
 
 
 def test_resume_runs_only_what_the_rehearsal_did_not_pass(
