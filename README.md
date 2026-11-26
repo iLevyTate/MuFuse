@@ -96,4 +96,5 @@ Features are built with [Spec Kit](https://github.com/github/spec-kit) (`/specki
 ---
 
 <sub>MuFuse is an independent, MIT-licensed open-source project and is not affiliated with,
-endorsed by, or sponsored by InteraXon Inc. Muse is a trademark of InteraXon Inc.</sub>
+endorsed by, or sponsored by InteraXon Inc. Muse is a trademark of InteraXon Inc. Not an Official
+Muse application.</sub>

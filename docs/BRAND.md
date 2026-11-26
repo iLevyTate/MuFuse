@@ -41,6 +41,9 @@ Construction rules:
 | `phosphor-amber` | `#F59E0B` | Active shift cue, impulse spike, primary accent |
 | `scope-green` | `#22C55E` | Good electrode contact, stream lock, passing checks |
 | `clip-red` | `#EF4444` | Dropped packets, poor contact, motion artifact |
+| `fair-amber` | `#EAB308` | Touching but noisy, or settling: contact that is not good yet |
+
+`fair-amber` is a yellow kept apart from `phosphor-amber`, which stays reserved for the shift cue.
 
 Status colours describe **signal quality only** (contact, packets, artifacts). Never use them to
 grade a person's state: there is no "red = bad mood".
@@ -74,3 +77,13 @@ Wherever the product is described publicly:
 
 > MuFuse is an independent, MIT-licensed open-source project and is not affiliated with, endorsed
 > by, or sponsored by InteraXon Inc. Muse is a trademark of InteraXon Inc.
+
+App-store text for any MuFuse app must say "Not an Official Muse application" in its first
+paragraph, and never use "Muse" in the app's title, subtitle or URL (Muse brand guidelines).
+
+## Contact view
+
+The live view shows electrode contact as a plain position map of the sensors (forehead EEG, the
+fNIRS detectors, the reference, the ear sensors) with a shape, a word and a colour per sensor.
+It is never a horseshoe: Muse's brand guidelines forbid replicating their signal-quality
+indicator or anything like it.
