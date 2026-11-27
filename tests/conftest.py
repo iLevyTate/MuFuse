@@ -24,3 +24,12 @@ class FakeClock:
 @pytest.fixture
 def clock() -> FakeClock:
     return FakeClock()
+
+
+@pytest.fixture(autouse=True)
+def _isolated_run_log(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch):
+    """Keep the CLI's connection log out of the real user log folder."""
+    monkeypatch.setenv("MUFUSE_LOG_DIR", str(tmp_path_factory.mktemp("logs")))
+    monkeypatch.delenv("MUFUSE_T0", raising=False)
+    monkeypatch.delenv("MUFUSE_RUN_LABEL", raising=False)
+    monkeypatch.delenv("MUFUSE_SIM_WEARER", raising=False)

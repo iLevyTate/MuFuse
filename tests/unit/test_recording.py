@@ -8,7 +8,7 @@ import pytest
 
 from mufuse.acquisition.athena import ATHENA_STREAMS
 from mufuse.acquisition.types import Chunk, DeviceInfo, StreamKind
-from mufuse.recording.format import FORMAT_VERSION, Gap, Marker, new_session_id
+from mufuse.recording.format import FORMAT_VERSION, Gap, Marker, ReconnectStep, new_session_id
 from mufuse.recording.reader import load_session
 from mufuse.recording.writer import SessionWriter
 from tests.conftest import FakeClock
@@ -74,6 +74,24 @@ def test_gaps_persist(writer: SessionWriter, clock: FakeClock) -> None:
     assert gap.end == pytest.approx(gap.start + 3)
 
 
+def test_reconnect_steps_persist(writer: SessionWriter, clock: FakeClock) -> None:
+    steps = [
+        ReconnectStep(clock.now, "lost", "stall"),
+        ReconnectStep(clock.now + 1.0, "attempt"),
+        ReconnectStep(clock.now + 17.0, "failed", "no device"),
+    ]
+    for step in steps:
+        writer.add_reconnect_step(step)
+    writer.close_files()  # as after a crash: every step was flushed when it happened
+    assert load_session(writer.session_dir).reconnects == steps
+
+
+def test_session_from_before_reconnect_steps_has_none(writer: SessionWriter) -> None:
+    writer.finalize()
+    (writer.session_dir / "reconnects.jsonl").unlink()
+    assert load_session(writer.session_dir).reconnects == []
+
+
 def test_unfinalized_session_with_partial_row_is_readable(writer: SessionWriter) -> None:
     writer.write([_eeg(0.0, 10)])
     writer.close_files()  # simulate a crash: no finalize
@@ -87,3 +105,20 @@ def test_unfinalized_session_with_partial_row_is_readable(writer: SessionWriter)
 def test_finalize_is_idempotent(writer: SessionWriter) -> None:
     writer.finalize()
     writer.finalize()
+
+
+def test_lost_subpackets_are_stored_next_to_completeness(
+    writer: SessionWriter, clock: FakeClock
+) -> None:
+    writer.write([_eeg(clock.now, 256)])
+    writer.finalize(lost_subpackets={StreamKind.EEG: 3, StreamKind.MOTION: 0, StreamKind.OPTICS: 1})
+    manifest = load_session(writer.session_dir).manifest
+    assert manifest["lost_subpackets"] == {"eeg": 3, "motion": 0, "optics": 1}
+    assert manifest["completeness"]["eeg"] == {"expected": 256, "received": 256}
+
+
+def test_sessions_without_lost_subpackets_still_load(writer: SessionWriter) -> None:
+    writer.finalize()  # as written before the field existed
+    session = load_session(writer.session_dir)
+    assert session.finalized
+    assert "lost_subpackets" not in session.manifest

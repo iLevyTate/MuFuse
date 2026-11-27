@@ -11,6 +11,8 @@ uv run pyright                            # strict types on src/
 uv run pytest -m "not hardware"           # CI suite (no headband)
 uv run pytest -m hardware -s              # needs headband on, Muse app closed
 uv run mufuse stream --source sim         # live view without hardware
+uv run python scripts/hw_acceptance.py             # every hardware check in one sitting
+uv run python scripts/hw_acceptance.py --rehearse  # the same on the simulator, no headband
 ```
 
 ## Workflow
@@ -33,8 +35,12 @@ uv run mufuse stream --source sim         # live view without hardware
 - Only one device can connect to the headband; the phone Muse app must be closed.
 - Never commit personal recordings (`recordings/` is git-ignored); the repo is public.
 - Inject clocks (`tests/conftest.py::FakeClock`) for anything time-dependent.
-- fNIRS hemoglobin is experimental until feature 004's validation passes; channel order is unverified
-  (see `docs/research/2026-11-25-athena-fnirs-resources.md`).
+- fNIRS hemoglobin is experimental until feature 004's validation passes. BrainFlow optics rows are
+  in wire order (OPT1-4 red, 5-8 ambient, 9-12 730 nm, 13-16 850 nm), not Mind Monitor's order;
+  guided check F1 confirms it per unit (see `docs/research/2026-11-25-athena-fnirs-resources.md`).
+- Ear sensors (TP9, TP10) are not reliable until issue #12 is fixed: draw no conclusion from
+  them, never loosen P0 or H8 for it, and keep features working on AF7/AF8 alone
+  (`docs/KNOWN-ISSUES.md`).
 - User-facing language: describe signal changes vs. personal baseline; never "you are anxious".
 - Brand tokens, logo rules and the InteraXon notice: `docs/BRAND.md`. Status colours grade
   signal quality only, never the person.

@@ -22,7 +22,7 @@ and settles into a flat resting baseline.
 | [`assets/mufuse-banner-dark.svg`](../assets/mufuse-banner-dark.svg) | README and banners on dark backgrounds (transparent) |
 | [`assets/mufuse-banner-light.svg`](../assets/mufuse-banner-light.svg) | Same on light backgrounds; μ, baseline and text in Carbon |
 | [`assets/mufuse-icon.svg`](../assets/mufuse-icon.svg) | 1:1 app icon and favicon on Lab Slate with a Graticule grid; checked at 16×16 px |
-| `src/mufuse/banner.py` | Terminal version as half-block pixel art, 6 lines × 80 columns |
+| `src/mufuse/banner.py` | Terminal version as a plain-ASCII line trace (slashes, underscores, pipes), 5 lines × 80 columns |
 
 Construction rules:
 - The colour change happens at the μ's left stem. Amber is never used to the right of it.
@@ -41,12 +41,17 @@ Construction rules:
 | `phosphor-amber` | `#F59E0B` | Active shift cue, impulse spike, primary accent |
 | `scope-green` | `#22C55E` | Good electrode contact, stream lock, passing checks |
 | `clip-red` | `#EF4444` | Dropped packets, poor contact, motion artifact |
+| `fair-amber` | `#EAB308` | Touching but noisy, or settling: contact that is not good yet |
+
+`fair-amber` is a yellow kept apart from `phosphor-amber`, which stays reserved for the shift cue.
 
 Status colours describe **signal quality only** (contact, packets, artifacts). Never use them to
 grade a person's state: there is no "red = bad mood".
 
 The light banner's tagline uses a darker amber (`#B45309`) so the text stays readable on white.
-The mark itself always uses `phosphor-amber`.
+The mark itself always uses `phosphor-amber`. The one exception is the CLI banner, which draws the
+impulse in orange (`#F97316`) and the μ and baseline in white (`#FFFFFF`) so the ASCII trace reads
+clearly in a terminal.
 
 ## Typography (SIL Open Font License)
 
@@ -72,3 +77,13 @@ Wherever the product is described publicly:
 
 > MuFuse is an independent, MIT-licensed open-source project and is not affiliated with, endorsed
 > by, or sponsored by InteraXon Inc. Muse is a trademark of InteraXon Inc.
+
+App-store text for any MuFuse app must say "Not an Official Muse application" in its first
+paragraph, and never use "Muse" in the app's title, subtitle or URL (Muse brand guidelines).
+
+## Contact view
+
+The live view shows electrode contact as a plain position map of the sensors (forehead EEG, the
+fNIRS detectors, the reference, the ear sensors) with a shape, a word and a colour per sensor.
+It is never a horseshoe: Muse's brand guidelines forbid replicating their signal-quality
+indicator or anything like it.

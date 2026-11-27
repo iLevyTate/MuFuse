@@ -1,4 +1,4 @@
-"""CLI header: the Concept 7J-3 impulse-to-mu trace as half-block pixel art (docs/BRAND.md)."""
+"""CLI header: the Concept 7J-3 impulse-to-mu trace drawn in plain ASCII (docs/BRAND.md)."""
 
 from __future__ import annotations
 
@@ -7,30 +7,23 @@ from importlib.metadata import PackageNotFoundError, version
 from rich.console import Console
 from rich.text import Text
 
-PHOSPHOR_AMBER = "#F59E0B"
-BENCH_PAPER = "#F3F1EC"
+# CLI only: a punchier orange and pure white than the SVG mark's amber and paper (docs/BRAND.md).
+CLI_ORANGE = "#F97316"
+CLI_WHITE = "#FFFFFF"
 
-# One character per column, two pixel rows per terminal line. Columns before MU_COLUMN are the
-# amber impulse; from MU_COLUMN on, the mu and its resting baseline.
-_PIXELS = (
-    "...........#............................",
-    "..........#.#...........................",
-    "..........#.#...........................",
-    "..........#.#.........##....##..........",
-    ".........#...#........##....##..........",
-    ".....#...#...#........##....##..........",
-    "....#.#..#...#........##....##..........",
-    "####...##.....#...######################",
-    "..............#..#....##................",
-    "..............#..#....##................",
-    "...............##.....##................",
-    "......................##................",
+# Lead-in, pre-bump, impulse and dip, then the mu settling into its resting baseline. Plain ASCII
+# so every terminal font draws it. Columns before MU_COLUMN (the mu's left stem) are orange.
+_TRACE = (
+    r"            /\                            ",
+    r"           /  \       |   |               ",
+    r" ____/\___/    \  /\__|___|_______________",
+    r"                \/    |                   ",
+    r"                      |                   ",
 )
 MU_COLUMN = 22
-HEIGHT_LINES = len(_PIXELS) // 2
+HEIGHT_LINES = len(_TRACE)
 MAX_WIDTH = 80
-_GAP = "   "
-_HALF = {(True, True): "█", (True, False): "▀", (False, True): "▄", (False, False): " "}
+_GAP = "  "
 
 
 def _version() -> str:
@@ -43,15 +36,13 @@ def _version() -> str:
 def render_banner(status: str = "") -> Text:
     """The mark on the left; name, version, tagline and `status` beside it."""
     info = [f"MuFuse v{_version()}", "Punk EEG.", "", status]
+    room = MAX_WIDTH - len(_TRACE[0]) - len(_GAP)
     out = Text()
-    for line in range(HEIGHT_LINES):
-        top, bottom = _PIXELS[2 * line], _PIXELS[2 * line + 1]
-        for col, (a, b) in enumerate(zip(top, bottom, strict=True)):
-            glyph = _HALF[(a == "#", b == "#")]
-            out.append(glyph, style=PHOSPHOR_AMBER if col < MU_COLUMN else BENCH_PAPER)
+    for line, row in enumerate(_TRACE):
+        out.append(row[:MU_COLUMN], style=CLI_ORANGE)
+        out.append(row[MU_COLUMN:], style=CLI_WHITE)
         label = info[line - 1] if 0 < line <= len(info) else ""
         if label:
-            room = MAX_WIDTH - len(top) - len(_GAP)
             label = label if len(label) <= room else label[: room - 1] + "…"
             out.append(_GAP)
             out.append(label, style="bold" if line == 1 else ("dim" if line == 2 else ""))

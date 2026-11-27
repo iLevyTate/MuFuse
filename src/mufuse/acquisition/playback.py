@@ -38,6 +38,10 @@ class PlaybackSource:
         return ATHENA_STREAMS
 
     @property
+    def lost_subpackets(self) -> Mapping[StreamKind, int]:
+        return dict.fromkeys(ATHENA_STREAMS, 0)  # no headset link, so nothing is lost on it
+
+    @property
     def exhausted(self) -> bool:
         return all(
             self._cursor.get(k, 0) >= ts.size for k, (ts, _) in self._session.streams.items()
