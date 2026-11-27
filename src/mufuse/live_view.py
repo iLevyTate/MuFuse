@@ -7,12 +7,13 @@ Laid out so the first question, "is it on right?", is answered first:
    position map of every sensor (forehead EEG, the four fNIRS detectors around their light source,
    the reference, the ear sensors), and beside it one fixed-width row per sensor with its grade,
    a 2 s trace and a number; then one tip for the worst sensor;
-3. the quality block: the coverage of the newest judged second and the sensors that are out;
+3. the quality block: the coverage of the newest judged second and the sensors that are out,
+   then the signal: blinks counted so far, muscle activity and head movement in that second;
 4. one streams line: rate and share received per stream, gaps, markers;
 5. the guide of a guided session, and the keys.
 
-Contact and coverage come from the quality engine (`mufuse.quality.engine`), one answer per
-judged second, so nothing on them changes more often than once a second.
+Contact, coverage and the signal marks come from the quality engine (`mufuse.quality.engine`),
+one answer per judged second, so nothing on them changes more often than once a second.
 
 Every column has a fixed width so a changing value never moves the rest. From 78 columns the
 map sits beside the list; below that they stack instead of wrapping.
@@ -59,7 +60,7 @@ from mufuse.acquisition.supervisor import State, StreamSupervisor
 from mufuse.acquisition.types import Chunk, DeviceInfo, FloatArray, StreamKind
 from mufuse.banner import CLI_ORANGE
 from mufuse.guide import Guide
-from mufuse.quality.answer import ContactState, Coverage, QualityAnswer
+from mufuse.quality.answer import Blink, ContactState, Coverage, Movement, QualityAnswer
 from mufuse.quality.engine import QualityEngine
 
 # docs/BRAND.md: scope-green, fair-amber, clip-red; the CLI orange; muted greys for labels.
@@ -144,16 +145,24 @@ class LiveStats:
         self.battery: float | None = None  # the last level the headband reported
         self._engine = QualityEngine()
         self._answers: list[QualityAnswer] = []
+        self._blinks: list[Blink] = []
 
     @property
     def answers(self) -> tuple[QualityAnswer, ...]:
         """Every answer the engine gave so far, in time order."""
         return tuple(self._answers)
 
+    @property
+    def blinks(self) -> tuple[Blink, ...]:
+        """Every blink the engine found so far, in time order."""
+        return tuple(self._blinks)
+
     def add(self, chunks: list[Chunk], now: float) -> None:
         self._since = now if self._since is None else self._since
         self._now = now
-        self._answers += self._engine.feed(chunks).answers
+        judged = self._engine.feed(chunks)
+        self._answers += judged.answers
+        self._blinks += judged.blinks
         for chunk in chunks:
             self._recent[chunk.kind].append(chunk)
             if chunk.kind is StreamKind.OPTICS and chunk.n_samples:
@@ -201,6 +210,14 @@ class LiveStats:
         newest = self._newest()
         return None if newest is None else newest.coverage
 
+    def signal(self) -> SignalMarks | None:
+        """The blink count and the marks of the newest judged second."""
+        newest = self._newest()
+        if newest is None:
+            return None
+        blinks = None if newest.eye == "unavailable" else len(self._blinks)
+        return SignalMarks(blinks, newest.tension == "yes", newest.movement)
+
     def _view(self, c: ContactState) -> SensorView:
         grade: Grade = "none" if c.state == "none" else "noisy" if c.state == "noisy" else "good"
         why: Why = "quiet" if c.reason is None else c.reason
@@ -231,6 +248,15 @@ class LiveStats:
 
 
 @dataclass(frozen=True)
+class SignalMarks:
+    """The Signal line: blinks so far (None: not available now) and the newest second's marks."""
+
+    blinks: int | None
+    tension: bool
+    movement: Movement
+
+
+@dataclass(frozen=True)
 class StreamRow:
     name: str
     rate: float
@@ -258,6 +284,7 @@ class Screen:
     traces: Mapping[str, tuple[float, ...]] = field(default_factory=dict[str, tuple[float, ...]])
     detectors: Mapping[str, DetectorGrade] = field(default_factory=dict[str, DetectorGrade])
     coverage: Coverage | None = None  # None until the first second is judged
+    signal: SignalMarks | None = None  # likewise
 
     def with_time(self, elapsed: float, guide: Guide | None, guide_elapsed: float) -> Screen:
         return replace(
@@ -274,6 +301,7 @@ class Screen:
             yield Text(f" link: {self.link_error or 'reconnecting…'}", style=RED, overflow="fold")
         yield _sensors_panel(self, g, width)
         yield coverage_line(self, width)
+        yield signal_line(self, width)
         yield _streams_line(self, width)
         if self.guide is not None:
             yield GuideView(*self.guide, width=min(WIDE, width))
@@ -286,6 +314,7 @@ class Screen:
         parts = [_mmss(self.elapsed), self.state.value]
         parts += [f"{n} {_EEG[by[n].shown][1]}" for n in SENSORS if n in by]
         parts.append("coverage " + " · ".join(words for words, _ in _coverage_pieces(self)))
+        parts.append("signal " + " · ".join(words for words, _ in _signal_pieces(self)))
         if self.detectors:
             pulse = sum(v == "pulse" for v in self.detectors.values())
             parts.append(f"fNIRS {pulse}/{len(self.detectors)} pulse")
@@ -340,6 +369,7 @@ def render(
         traces=stats.traces(),
         detectors=stats.detectors(preset),
         coverage=stats.coverage(),
+        signal=stats.signal(),
     )
 
 
@@ -565,7 +595,12 @@ SENSOR_TEXTS = {  # contracts/cli.md: a sensor that is out, by its state or its 
 }
 NO_SENSOR = "No sensor is touching skin. Is the headband on?"
 _LEVEL_COLOUR = {"full": GREEN, "reduced": GREEN, "one_forehead": YELLOW, "none": RED}
-_LABEL = " Coverage  "
+SIGNAL_TEXTS = {  # contracts/cli.md: the Signal line names the signal, never the person
+    "no_blinks": "blinks: not available",
+    "tension": "muscle activity in the signal",
+    "moving": "head movement",
+    "unknown": "movement: unknown",
+}
 
 
 def _out_text(view: SensorView) -> str:
@@ -600,12 +635,28 @@ def _coverage_pieces(s: Screen) -> list[tuple[str, Text]]:
     return pieces
 
 
-def coverage_line(s: Screen, width: int) -> Text:
-    """`Coverage  <level> · <each sensor that is out>`, broken between pieces to fit `width`."""
-    out, line = Text(), Text.assemble((_LABEL, DIM))
-    indent = " " * len(_LABEL)
+def _signal_pieces(s: Screen) -> list[tuple[str, Text]]:
+    """The Signal line's pieces; no quality colour, since they grade nothing."""
+    if s.signal is None:
+        return [("waiting", Text("waiting", style=DIM))]
+    marks = s.signal
+    if marks.blinks is None:
+        words = [SIGNAL_TEXTS["no_blinks"]]
+    else:
+        words = [f"{marks.blinks} blink{'' if marks.blinks == 1 else 's'}"]
+    if marks.tension:
+        words.append(SIGNAL_TEXTS["tension"])
+    if marks.movement in ("moving", "unknown"):
+        words.append(SIGNAL_TEXTS[marks.movement])
+    return [(w, Text(w, style=INK)) for w in words]
+
+
+def _block(label: str, pieces: list[tuple[str, Text]], width: int) -> Text:
+    """` <label>  <piece> · <piece>`, broken between pieces (never inside one) to fit `width`."""
+    out, line = Text(), Text.assemble((f" {label:<8}  ", DIM))
+    indent = " " * line.cell_len
     first = True
-    for _, piece in _coverage_pieces(s):
+    for _, piece in pieces:
         joint = Text("") if first else Text(" · ", style=DIM)
         if not first and line.cell_len + joint.cell_len + piece.cell_len > width:
             out.append_text(line)
@@ -617,6 +668,16 @@ def coverage_line(s: Screen, width: int) -> Text:
     out.append_text(line)
     out.no_wrap, out.overflow = True, "ellipsis"
     return out
+
+
+def coverage_line(s: Screen, width: int) -> Text:
+    """`Coverage  <level> · <each sensor that is out>`."""
+    return _block("Coverage", _coverage_pieces(s), width)
+
+
+def signal_line(s: Screen, width: int) -> Text:
+    """`Signal    <blinks> · <marks of the newest second>`."""
+    return _block("Signal", _signal_pieces(s), width)
 
 
 # Streams ---------------------------------------------------------------------------------------

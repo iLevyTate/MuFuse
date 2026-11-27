@@ -66,6 +66,25 @@ class Span:
     end: float
 
 
+def spans(answers: Sequence[QualityAnswer], kind: SpanKind) -> tuple[Span, ...]:
+    """Marked stretches in a row are one span; an unmarked stretch or a gap ends it (rules §7)."""
+    found: list[Span] = []
+    start = end = 0.0
+    open_ = False
+    for answer in answers:
+        marked = not answer.no_data and (
+            answer.tension == "yes" if kind == "tension" else answer.movement == "moving"
+        )
+        if marked:
+            start, end, open_ = (start if open_ else answer.start), answer.end, True
+        elif open_:
+            found.append(Span(kind, start, end))
+            open_ = False
+    if open_:
+        found.append(Span(kind, start, end))
+    return tuple(found)
+
+
 @dataclass(frozen=True)
 class QualityAnswer:
     """One stretch of a session: contact per sensor, coverage, and the three marks."""

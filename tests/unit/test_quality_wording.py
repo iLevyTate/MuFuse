@@ -15,8 +15,11 @@ from mufuse.live_view import (
     COVERAGE_WORDS,
     NO_SENSOR,
     SENSOR_TEXTS,
+    SIGNAL_TEXTS,
     Screen,
+    SignalMarks,
     coverage_line,
+    signal_line,
 )
 from mufuse.quality.answer import SENSORS, Coverage
 
@@ -45,7 +48,9 @@ def _view(name: str, shown: str, why: str) -> SensorView:
     return SensorView(name, shown, Reading(grade, why, 120.0, 0.9), 1)  # type: ignore[arg-type]
 
 
-def _screen(sensors: tuple[SensorView, ...], coverage: Coverage | None) -> Screen:
+def _screen(
+    sensors: tuple[SensorView, ...], coverage: Coverage | None, signal: SignalMarks | None = None
+) -> Screen:
     return Screen(
         recording=None,
         elapsed=12.0,
@@ -59,6 +64,7 @@ def _screen(sensors: tuple[SensorView, ...], coverage: Coverage | None) -> Scree
         markers=0,
         glare=False,
         coverage=coverage,
+        signal=signal,
     )
 
 
@@ -75,14 +81,20 @@ def _screens() -> list[Screen]:
             screens.append(_screen(views, Coverage(level, (name,))))  # type: ignore[arg-type]
         every = tuple(_view(n, shown, why) for n in SENSORS)
         screens.append(_screen(every, Coverage("none", SENSORS)))
+    for blinks in (None, 0, 1, 14):
+        for tension in (False, True):
+            for movement in ("still", "moving", "unknown"):
+                marks = SignalMarks(blinks, tension, movement)  # type: ignore[arg-type]
+                screens.append(_screen(tuple(good.values()), Coverage("full", ()), marks))
     return screens
 
 
 def _texts() -> list[str]:
-    texts = [NO_SENSOR, *COVERAGE_WORDS.values()]
+    texts = [NO_SENSOR, *COVERAGE_WORDS.values(), *SIGNAL_TEXTS.values()]
     texts += [template.format(name=n) for template in SENSOR_TEXTS.values() for n in SENSORS]
     for screen in _screens():
-        texts += [coverage_line(screen, 200).plain, screen.status_line()]
+        texts += [coverage_line(screen, 200).plain, signal_line(screen, 200).plain]
+        texts.append(screen.status_line())
     return texts
 
 

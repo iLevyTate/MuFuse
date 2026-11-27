@@ -27,13 +27,15 @@ from mufuse.live_view import (
     YELLOW,
     LiveStats,
     Screen,
+    SignalMarks,
     StreamRow,
     coverage_line,
     guide_panel,
     lines,
+    signal_line,
 )
 from mufuse.quality.answer import Coverage
-from tests.conftest import FakeClock
+from tests.conftest import QUICK, FakeClock, rehearse
 
 DEVICE = DeviceInfo("MuseS-1A2B", "p1041", "simulated", firmware="3.1.31")
 SENSORS = ("TP9", "AF7", "AF8", "TP10")
@@ -366,6 +368,72 @@ def test_only_the_quality_colours_and_only_on_sensor_names_and_the_level() -> No
         coverage_line(_screen(sensors=noisy, coverage=Coverage("reduced", ("TP9", "TP10"))), 160)
     )
     assert colours["TP10"] == YELLOW
+
+
+# Signal ----------------------------------------------------------------------------------------
+
+
+def _signal(screen: Screen, width: int = 160) -> list[str]:
+    """The Signal line, and the lines it continues on."""
+    shown = [line.rstrip() for line in lines(screen, width)]
+    first = next(i for i, line in enumerate(shown) if line.startswith(" Signal    "))
+    out = [shown[first]]
+    for line in shown[first + 1 :]:
+        if not line.startswith(" " * 11):
+            break
+        out.append(line)
+    return out
+
+
+@pytest.mark.parametrize(
+    ("marks", "text"),
+    [
+        (
+            SignalMarks(14, True, "moving"),
+            "14 blinks · muscle activity in the signal · head movement",
+        ),
+        (SignalMarks(1, False, "still"), "1 blink"),
+        (SignalMarks(0, True, "still"), "0 blinks · muscle activity in the signal"),
+        (SignalMarks(None, False, "unknown"), "blinks: not available · movement: unknown"),
+    ],
+)
+def test_the_signal_line_counts_blinks_and_names_the_marks(marks: SignalMarks, text: str) -> None:
+    assert _signal(_screen(sensors=ALL_GOOD, signal=marks)) == [f" Signal    {text}"]
+
+
+def test_the_signal_line_waits_and_sits_under_the_coverage() -> None:
+    assert _signal(_screen()) == [" Signal    waiting"]
+    screen = _screen(sensors=EARS_OUT, coverage=REDUCED, signal=SignalMarks(3, False, "still"))
+    shown = [line.rstrip() for line in lines(screen, 60)]
+    at = next(i for i, line in enumerate(shown) if line.startswith(" Signal    "))
+    assert shown[at - 1].startswith(" " * 11)  # the coverage line, continued
+    assert any(line.startswith(" Coverage  ") for line in shown[:at])
+    assert shown[at + 1].startswith(" EEG ")
+
+
+def test_the_signal_line_carries_no_quality_colour() -> None:
+    screen = _screen(signal=SignalMarks(14, True, "moving"))
+    assert set(_colours(signal_line(screen, 160)).values()) <= {DIM, INK}
+
+
+def test_the_status_line_carries_the_signal() -> None:
+    line = _screen(signal=SignalMarks(14, True, "moving")).status_line()
+    assert "signal 14 blinks · muscle activity in the signal · head movement" in line
+    assert "signal waiting" in _screen().status_line()
+
+
+def test_live_stats_count_the_blinks(clock: FakeClock) -> None:
+    stats = LiveStats(clock)
+    reads = rehearse(replace(QUICK, blinks=((7.0, 10.0),)), clock, 12.0)
+    for i, read in enumerate(reads):
+        stats.add(read, clock.now)
+        if i == 11:  # three seconds in: the eye mark is not available yet
+            marks = stats.signal()
+            assert marks is not None
+            assert marks.blinks is None
+    marks = stats.signal()
+    assert marks == SignalMarks(3, False, "still")
+    assert LiveStats(clock).signal() is None
 
 
 def test_the_status_line_carries_the_coverage() -> None:

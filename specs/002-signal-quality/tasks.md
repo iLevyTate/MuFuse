@@ -127,38 +127,38 @@ of each are marked within 2 s, and quiet stretches stay unmarked.
 
 ### Tests first
 
-- [ ] T017 [P] [US2] Tests in `tests/unit/test_quality_motion.py` for rules §6: `unknown` under 26 samples; the
+- [X] T017 [P] [US2] Tests in `tests/unit/test_quality_motion.py` for rules §6: `unknown` under 26 samples; the
   gyroscope limit; the accelerometer limit on each axis; `still`; a sample at the stretch end belongs to the next
   stretch; a simulated turn is marked
-- [ ] T018 [P] [US2] Tests in `tests/unit/test_quality_tension.py` for rules §5: the level of a sine of known size
+- [X] T018 [P] [US2] Tests in `tests/unit/test_quality_tension.py` for rules §5: the level of a sine of known size
   inside the band equals its rms; hum at 50 and 60 Hz and the device lines do not raise the level; the smaller of
   two sensors; one sensor in use; `unavailable` with none; changing TP9 or TP10 changes nothing; a simulated
   clench is marked
-- [ ] T019 [P] [US2] Tests in `tests/unit/test_quality_blink.py` for rules §4: the filter state is carried, so the
+- [X] T019 [P] [US2] Tests in `tests/unit/test_quality_blink.py` for rules §4: the filter state is carried, so the
   envelope is the same in one piece and in pieces; the limit from the 30 s before; both sensors must be above; the
   16-sample minimum; the eye mark window; `unavailable` in the first 5 stretches and with no forehead sensor in
   use; a run above 307 samples marks the stretch and is not a blink (eyes closed, slow drift); the 0.8 s rule;
   simulated blinks are found at their times
-- [ ] T020 [P] [US2] Tests in `tests/unit/test_quality_engine.py`: rules §3 (a forehead sensor in use), §7 (spans:
+- [X] T020 [P] [US2] Tests in `tests/unit/test_quality_engine.py`: rules §3 (a forehead sensor in use), §7 (spans:
   marked stretches in a row are one span, a gap ends a span, long tension is one span) and §8 (clean; several
   reasons at once); no blink is reported from an `unavailable` stretch; the independent test above (20, 20, 20
   scripted events, at least 18 each)
-- [ ] T021 [P] [US2] Tests in `tests/unit/test_live_view.py` (extend) for the Signal line of `contracts/cli.md`
+- [X] T021 [P] [US2] Tests in `tests/unit/test_live_view.py` (extend) for the Signal line of `contracts/cli.md`
   (blink count, "blinks: not available", "muscle activity in the signal", "head movement", "movement: unknown"),
   and the same texts added to `tests/unit/test_quality_wording.py`
 
 ### Implementation
 
-- [ ] T022 [P] [US2] `src/mufuse/quality/motion.py`: rules §6
-- [ ] T023 [P] [US2] `src/mufuse/quality/tension.py`: rules §5
-- [ ] T024 [P] [US2] `src/mufuse/quality/blink.py`: rules §4; it produces `Blink.t` and `Blink.duration_s`
+- [X] T022 [P] [US2] `src/mufuse/quality/motion.py`: rules §6
+- [X] T023 [P] [US2] `src/mufuse/quality/tension.py`: rules §5
+- [X] T024 [P] [US2] `src/mufuse/quality/blink.py`: rules §4; it produces `Blink.t` and `Blink.duration_s`
   (`data-model.md`)
-- [ ] T025 [US2] `src/mufuse/quality/answer.py`: build the spans of rules §7 from a row of answers (`Span.kind`,
+- [X] T025 [US2] `src/mufuse/quality/answer.py`: build the spans of rules §7 from a row of answers (`Span.kind`,
   `Span.start`, `Span.end`, `data-model.md`)
-- [ ] T026 [US2] `src/mufuse/quality/engine.py`: feed the three detectors and fill `QualityAnswer.eye`,
+- [X] T026 [US2] `src/mufuse/quality/engine.py`: feed the three detectors and fill `QualityAnswer.eye`,
   `QualityAnswer.tension`, `QualityAnswer.tension_uv` and `QualityAnswer.movement` (`data-model.md`); blinks go
   into `Judged.blinks`
-- [ ] T027 [US2] `src/mufuse/live_view.py`: the Signal line under the Coverage line
+- [X] T027 [US2] `src/mufuse/live_view.py`: the Signal line under the Coverage line
 
 **Checkpoint**: the live view counts simulated blinks and names muscle activity and head movement.
 

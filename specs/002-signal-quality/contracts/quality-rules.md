@@ -77,6 +77,15 @@ Then, for both sensors together:
 
 The envelope trails the eye by about 0.1 s; the blink time is not corrected for that.
 
+Three readings that the steps above leave open, fixed here:
+
+- The 64 samples after a stretch lie in the next stretch: they use that stretch's limits (known from the samples
+  before it) and the sensors in use in the stretch being judged (the next one is not graded yet).
+- A sample that is not a number is replaced, before the band-pass, by the mean of the numbers of its sensor in
+  its stretch (0 when there are none); the same holds for section 5.
+- "The previous blink" is the previous blink that was reported; a blink first sample decides its stretch for
+  the `unavailable` rule.
+
 ## 5 Tension
 
 Per forehead sensor in use and per stretch, with `x` the 256 samples minus their mean, `w = numpy.hanning(256)`

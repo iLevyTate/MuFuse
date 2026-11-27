@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from mufuse.acquisition.contact import grade_window
 from mufuse.acquisition.types import Chunk, FloatArray
 from mufuse.quality.answer import (
+    FOREHEAD,
     SENSORS,
     Blink,
     ContactState,
@@ -20,8 +21,13 @@ from mufuse.quality.answer import (
     State,
     coverage_of,
 )
+from mufuse.quality.blink import EyeDetector
+from mufuse.quality.motion import movement
 from mufuse.quality.rules import RULES, Rules
 from mufuse.quality.stretch import NoData, Stretch, StretchCutter
+from mufuse.quality.tension import tension
+
+_FOREHEAD_COLUMNS = [SENSORS.index(name) for name in FOREHEAD]  # AF7, AF8; TP9, TP10 never read
 
 
 @dataclass(frozen=True)
@@ -39,13 +45,15 @@ class QualityEngine:
         self._rules = rules
         self._cutter = StretchCutter(rules)
         self._good = dict.fromkeys(SENSORS, 0)  # good stretches in a row, per sensor
+        self._eye = EyeDetector(rules)
 
     def feed(self, chunks: Sequence[Chunk]) -> Judged:
         return self._judge(self._cutter.add(chunks))
 
     def finish(self) -> Judged:
         """The stretches that still wait, judged with the samples that exist."""
-        return self._judge(self._cutter.finish())
+        judged = self._judge(self._cutter.finish())
+        return Judged(judged.answers, judged.blinks + self._eye.close())
 
     def settle_left(self, sensor: str) -> int:
         """Good stretches `sensor` still needs, after the newest one, before it shows as good."""
@@ -53,29 +61,38 @@ class QualityEngine:
 
     def _judge(self, items: Sequence[Stretch | NoData]) -> Judged:
         answers: list[QualityAnswer] = []
+        blinks: list[Blink] = []
         for item in items:
             if isinstance(item, NoData):
                 self._good = dict.fromkeys(SENSORS, 0)  # a gap ends every hold
+                blinks += self._eye.close()  # ... and the eye's run; a new anchor follows
                 answers.append(QualityAnswer.gap(item.start, item.end))
             else:
-                answers.append(self._answer(item))
-        return Judged(answers=tuple(answers))
+                answer, found = self._answer(item)
+                answers.append(answer)
+                blinks += found
+        return Judged(answers=tuple(answers), blinks=tuple(blinks))
 
-    def _answer(self, stretch: Stretch) -> QualityAnswer:
+    def _answer(self, stretch: Stretch) -> tuple[QualityAnswer, tuple[Blink, ...]]:
         contact = tuple(
             self._contact(name, stretch.eeg[:, column]) for column, name in enumerate(SENSORS)
         )
-        return QualityAnswer(
+        by = {c.sensor: c for c in contact}
+        in_use = tuple(by[name].state != "none" for name in FOREHEAD)  # rules section 3
+        eye, blinks = self._eye.judge(stretch, in_use)
+        mark, level = tension(stretch.eeg[:, _FOREHEAD_COLUMNS], in_use, self._rules)
+        answer = QualityAnswer(
             start=stretch.start,
             end=stretch.end,
             rules=self._rules.version,
             contact=contact,
             coverage=coverage_of(contact),
-            eye="unavailable",
-            tension="unavailable",
-            tension_uv=None,
-            movement="unknown",
+            eye=eye,
+            tension=mark,
+            tension_uv=level,
+            movement=movement(stretch.motion, self._rules),
         )
+        return answer, blinks
 
     def _contact(self, sensor: str, window: FloatArray) -> ContactState:
         """The grade of one stretch, and `good` only from the third good stretch in a row."""

@@ -67,6 +67,12 @@ then frozen as rules v1 (see R13). The exact v1 definitions are in `contracts/qu
   electrode pops.
 - **Alternatives**: a fixed amplitude limit (fails across people and fits); template matching (needs a template
   per person); the Muse's own blink flags (not in BrainFlow, and not ground truth).
+- **Seen while building (2026-11-27, simulator)**: the 1 Hz high-pass of the band makes the envelope swing back
+  after a large blink (150 µV, 0.3 s): runs of 16-21 samples above the 15 µV floor about 0.67-0.77 s after the
+  onset. They are eye events, so they also mark the next stretch, and only the 0.8 s rule keeps them from counting
+  as blinks. Two blinks 0.45-0.8 s apart therefore count as two, the second being the first one's swing-back.
+  To check when the limits are tuned (T055): the swing-back on real blinks, and whether the floor or the 0.8 s
+  rule needs to move.
 
 ## R6 Muscle tension
 - **Decision**: per forehead sensor and stretch: mean removed, Hann window, power spectrum; the level is the root
