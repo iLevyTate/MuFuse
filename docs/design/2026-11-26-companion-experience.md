@@ -198,7 +198,7 @@ Each step is one Spec Kit feature on its own branch.
 
 | Step | Feature | What you can do after it |
 |---|---|---|
-| 1 | 001 acquisition: finish hardware checks, merge | Record sessions |
+| 1 | 001 acquisition: merged on 2026-11-26. Two ear-sensor checks (P0, H8) are still open | Record sessions |
 | 2 | 002 signal quality | Trust or discard each stretch of signal |
 | 3 | 003 features and baseline | See the brain-state numbers in the terminal |
 | 4 | 005 check-ins, with `mufuse serve` and the strip | Use the strip at your desk and answer check-ins |
@@ -206,6 +206,9 @@ Each step is one Spec Kit feature on its own branch.
 | 6 | 007 chat | Ask "what are you seeing?"; it talks first |
 | 7 | 009 breathing | A guided breathing exercise with live HRV |
 | 8 | 008 review page | Timeline and weekly patterns |
+
+The ear sensors (TP9, TP10) do not hold contact at the moment (`docs/KNOWN-ISSUES.md`), so steps 2
+and 3 must work when only the two forehead sensors are usable.
 
 ## Decisions (2026-11-26)
 
