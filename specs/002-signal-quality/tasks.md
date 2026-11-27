@@ -312,7 +312,7 @@ the number found, and pass or fail against 90%.
   goes into the pull request and what never does)
 - [X] T059 Full check: `uv run ruff format`, `uv run ruff check`, `uv run pyright`, `uv run pytest -m "not
   hardware"` in under 2 minutes with coverage at 80% or above (SC-010); fix what it shows in `src/mufuse/quality/`
-- [ ] T060 Run the simulator part of `specs/002-signal-quality/quickstart.md` from start to end and correct the
+- [X] T060 Run the simulator part of `specs/002-signal-quality/quickstart.md` from start to end and correct the
   file where a command or an expected result differs
 - [ ] T061 **(you)** The gate sitting, after T056: headband on, phone Muse app closed,
   `uv run mufuse quality label --source athena` (guide: `tests/hardware/README.md`). It scores SC-001, SC-002,
