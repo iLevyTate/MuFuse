@@ -17,6 +17,17 @@ and touches neither the headband nor the real logs:
 uv run python scripts/hw_acceptance.py --rehearse --h4-seconds 30
 ```
 
+## Known issue: the ear sensors
+
+The ear sensors (TP9, TP10) do not hold contact at the moment (issue #12). Until that is
+fixed, P0 fails and H8 cannot be judged; every other check has passed. P0 is not loosened.
+Numbers, what is affected and what to try: `docs/KNOWN-ISSUES.md`. The checks that do not need
+ear contact run with:
+
+```
+uv run python scripts/hw_acceptance.py H6 H7 H5 F1 H4
+```
+
 ## On the desk before the start
 
 - The headband is charged (P0 wants 20% or more) and switched on.

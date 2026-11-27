@@ -68,6 +68,9 @@ directly. If you previously paired it in Windows settings, remove it there first
 5. `uv run mufuse stream`. The first run scans and remembers your headband. Within about 15 s
    the EEG row should read `ok` for TP9, AF7, AF8, TP10 at roughly 256/52/64 Hz. Press `q` to quit.
 
+TP9 or TP10 not reading `ok`? The ear sensors are a known problem at the moment: see
+`docs/KNOWN-ISSUES.md`.
+
 Not found? Power-cycle the headband, toggle Windows Bluetooth, make sure the phone isn't
 connected, and stay within about 2 m.
 
