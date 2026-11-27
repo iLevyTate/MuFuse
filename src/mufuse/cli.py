@@ -206,7 +206,9 @@ def _run(
     clock: Callable[[], float] = time.time,
     sleep: Callable[[float], None] = time.sleep,
     read_key: Callable[[], str | None] = _read_key,
+    stats: LiveStats | None = None,
 ) -> None:
+    """`stats`, when given, keeps what the live view judged (for the replay check)."""
     sup = StreamSupervisor(factory, clock=clock)
     with _stop_on_ctrl_c() as stop:
         if attempt.slow:
@@ -234,7 +236,9 @@ def _run(
         if warning is not None:
             console.print(f"! {warning}", style=YELLOW)
         try:
-            _show_and_record(sup, timer, duration, writer_factory, stop, clock, sleep, read_key)
+            _show_and_record(
+                sup, timer, duration, writer_factory, stop, clock, sleep, read_key, stats
+            )
         except OSError as exc:
             console.print(f"[red]Write error: {exc}[/red]")
             raise typer.Exit(EXIT_WRITE) from exc
@@ -257,6 +261,7 @@ def _show_and_record(
     clock: Callable[[], float],
     sleep: Callable[[float], None],
     read_key: Callable[[], str | None],
+    stats: LiveStats | None = None,
 ) -> None:
     """The live loop. Whatever ends it, the session is finalized before this returns."""
     assert sup.source is not None
@@ -267,7 +272,8 @@ def _show_and_record(
             sup.on_reconnect_step = writer.add_reconnect_step
         recording = writer.session_dir.name if writer else None
         guide = guide_from_env()
-        stats, open_blocks, markers = LiveStats(clock), set[str](), 0
+        stats = LiveStats(clock) if stats is None else stats
+        open_blocks, markers = set[str](), 0
         latest: list[Screen] = [render(sup, stats, recording)]
         while read_key() is not None:  # keys typed while it was connecting are not for this run
             pass
@@ -315,6 +321,8 @@ def _show_and_record(
             if not console.is_terminal:  # how it ended, as the redrawn view would have shown it
                 _status(latest[0], clock() - started, guide)
     finally:
+        if stats is not None:
+            stats.finish()  # the last stretches, judged with the samples that exist
         gap = sup.open_gap  # read before the supervisor is stopped
         if writer is not None:
             if gap is not None:

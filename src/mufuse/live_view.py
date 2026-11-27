@@ -195,6 +195,12 @@ class LiveStats:
         q = self._recent[kind]
         return sum(int((c.timestamps > self._now - WINDOW_S).sum()) for c in q) / span
 
+    def finish(self) -> None:
+        """The stream has ended: the stretches that still wait are judged with what exists."""
+        judged = self._engine.finish()
+        self._answers += judged.answers
+        self._blinks += judged.blinks
+
     def _newest(self) -> QualityAnswer | None:
         """The newest judged second, or None before the first one and after a gap."""
         newest = self._answers[-1] if self._answers else None

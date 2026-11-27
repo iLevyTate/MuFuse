@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import ast
+import json
 from collections.abc import Sequence
 from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 
@@ -15,8 +18,10 @@ from mufuse.quality.answer import (
     ContactState,
     Coverage,
     QualityAnswer,
+    SessionQuality,
     Span,
     spans,
+    to_json,
 )
 from mufuse.quality.engine import QualityEngine
 from mufuse.quality.rules import RULES_VERSION
@@ -198,3 +203,81 @@ def test_twenty_scripted_blinks_clenches_and_turns(clock: FakeClock) -> None:
     quiet = [a for a in answers if a.start - first >= 305.0 and a.end - first <= 329.0]
     assert len(quiet) >= 20
     assert {(a.eye, a.tension, a.movement) for a in quiet} == {("no", "no", "still")}
+
+
+# The guarantees of contracts/quality-interface.md -------------------------------------------
+
+QUALITY_SRC = Path(__file__).parents[2] / "src" / "mufuse" / "quality"
+MAY_TOUCH_FILES = {"labelled.py", "public_set.py"}  # they read markers and the public set
+NOT_HERE = ("time", "datetime", "socket", "ssl", "urllib", "http", "requests", "subprocess",
+            "os", "io", "pathlib", "shutil", "tempfile",
+            "mufuse.recording", "mufuse.runlog")  # fmt: skip
+
+
+def _imports(tree: ast.Module) -> list[tuple[str, int]]:
+    """Modules imported at run time (imports only for type checking are left out)."""
+    found: list[tuple[str, int]] = []
+    skip: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.If) and "TYPE_CHECKING" in ast.unparse(node.test):
+            skip |= {id(n) for n in ast.walk(node)}
+    for node in ast.walk(tree):
+        if id(node) in skip:
+            continue
+        if isinstance(node, ast.Import):
+            found += [(a.name, node.lineno) for a in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            found.append((node.module, node.lineno))
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in ("open", "input", "print")
+        ):
+            found.append((f"{node.func.id}()", node.lineno))
+    return found
+
+
+def test_the_engine_has_no_clock_no_network_and_no_file() -> None:
+    checked = 0
+    for path in sorted(QUALITY_SRC.glob("*.py")):
+        if path.name in MAY_TOUCH_FILES:
+            continue
+        checked += 1
+        for name, line in _imports(ast.parse(path.read_text(encoding="utf-8"))):
+            bad = name.endswith("()") or any(
+                name == m or name.startswith(f"{m}.") for m in NOT_HERE
+            )
+            assert not bad, f"{path.name}:{line} uses {name}"
+    assert checked >= 8
+
+
+def test_every_answer_names_its_rules_and_is_given_once(clock: FakeClock) -> None:
+    answers, _, _ = _rehearsed(replace(QUICK, off=()), clock, 12.0)
+    assert {a.rules for a in answers} == {RULES_VERSION}
+    starts = [a.start for a in answers]
+    assert starts == sorted(set(starts))  # each stretch once, in time order, never revised
+
+
+def test_to_json_holds_every_field(clock: FakeClock) -> None:
+    wearer = replace(QUICK, blinks=((8.0, 9.0),), clench=((9.0, 10.0),), turns=((10.0, 11.0),))
+    answers, blinks, _ = _rehearsed(wearer, clock, 14.0)
+    gap = QualityAnswer.gap(answers[-1].end, answers[-1].end + 2.5)
+    quality = SessionQuality.of((*answers, gap), blinks)
+    data = json.loads(json.dumps(to_json(quality)))
+    assert data["rules"] == RULES_VERSION
+    first = data["answers"][0]
+    assert set(first) == {
+        "start", "end", "contact", "coverage", "eye", "tension", "tension_uv", "movement"
+    }  # fmt: skip
+    assert set(first["contact"]) == set(SENSORS)
+    assert set(first["contact"]["AF7"]) == {"state", "reason", "spread_uv", "mains_share"}
+    assert set(first["coverage"]) == {"level", "out"}
+    assert data["answers"][-1] == {"start": gap.start, "end": gap.end, "no_data": True}
+    assert data["blinks"] == [{"t": b.t, "duration_s": b.duration_s} for b in blinks]
+    assert data["tension_spans"] == [
+        {"start": s.start, "end": s.end} for s in quality.tension_spans
+    ]
+    assert data["movement_spans"] == [
+        {"start": s.start, "end": s.end} for s in quality.movement_spans
+    ]
+    assert data["answers"][9]["tension"] == "yes"

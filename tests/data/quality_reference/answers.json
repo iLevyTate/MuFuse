@@ -1,0 +1,1859 @@
+{
+ "rules": "1",
+ "answers": [
+  {
+   "start": 1800000000.0,
+   "end": 1800000001.0,
+   "contact": {
+    "TP9": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 20.610191876885935,
+     "mains_share": 0.012383364461144132
+    },
+    "AF7": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 20.35090733187384,
+     "mains_share": 0.010349713772155194
+    },
+    "AF8": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 19.54032132811224,
+     "mains_share": 0.016180973663601047
+    },
+    "TP10": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 21.027050141670564,
+     "mains_share": 0.006286824238654936
+    }
+   },
+   "coverage": {
+    "level": "none",
+    "out": [
+     "TP9",
+     "AF7",
+     "AF8",
+     "TP10"
+    ]
+   },
+   "eye": "unavailable",
+   "tension": "no",
+   "tension_uv": 4.276788337952852,
+   "movement": "still"
+  },
+  {
+   "start": 1800000001.0,
+   "end": 1800000002.0,
+   "contact": {
+    "TP9": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 18.308929739130992,
+     "mains_share": 0.010072345467428878
+    },
+    "AF7": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 19.587732597746935,
+     "mains_share": 0.009058896836373972
+    },
+    "AF8": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 19.141411941472747,
+     "mains_share": 0.008307509282745115
+    },
+    "TP10": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 16.9300293262537,
+     "mains_share": 0.014562076135200072
+    }
+   },
+   "coverage": {
+    "level": "none",
+    "out": [
+     "TP9",
+     "AF7",
+     "AF8",
+     "TP10"
+    ]
+   },
+   "eye": "unavailable",
+   "tension": "no",
+   "tension_uv": 4.504463510073121,
+   "movement": "still"
+  },
+  {
+   "start": 1800000002.0,
+   "end": 1800000003.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.81305361476155,
+     "mains_share": 0.00477120152104546
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.384495189602326,
+     "mains_share": 0.01196152272285954
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.469857101017876,
+     "mains_share": 0.0038543448505932833
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.91791722429639,
+     "mains_share": 0.010676435119891723
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "unavailable",
+   "tension": "no",
+   "tension_uv": 3.995010541906012,
+   "movement": "still"
+  },
+  {
+   "start": 1800000003.0,
+   "end": 1800000004.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.217933842829872,
+     "mains_share": 0.010977886398451816
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.680346904796313,
+     "mains_share": 0.00723805899991187
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.388249244268405,
+     "mains_share": 0.015366534826773012
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 17.80060176369691,
+     "mains_share": 0.007114435353017472
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "unavailable",
+   "tension": "no",
+   "tension_uv": 6.2570655606744765,
+   "movement": "still"
+  },
+  {
+   "start": 1800000004.0,
+   "end": 1800000005.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.31308441322369,
+     "mains_share": 0.01400470467668108
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.460674920999658,
+     "mains_share": 0.018020702660852858
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.498532149010927,
+     "mains_share": 0.008972877314653958
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.051957277997857,
+     "mains_share": 0.012775923686270863
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "unavailable",
+   "tension": "no",
+   "tension_uv": 4.408983270016126,
+   "movement": "still"
+  },
+  {
+   "start": 1800000005.0,
+   "end": 1800000006.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.258341953148076,
+     "mains_share": 0.008325238617502596
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.874212756472897,
+     "mains_share": 0.02538554915135648
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.412213338742312,
+     "mains_share": 0.01133509282823224
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.763170712040843,
+     "mains_share": 0.010151152886330452
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 4.585490624654903,
+   "movement": "still"
+  },
+  {
+   "start": 1800000006.0,
+   "end": 1800000007.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.110679977913296,
+     "mains_share": 0.003152341362560028
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.970023796467004,
+     "mains_share": 0.035882906804787326
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.97326499806513,
+     "mains_share": 0.013754976094186888
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 17.78471550505799,
+     "mains_share": 0.011379678210627577
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 4.430583137433705,
+   "movement": "still"
+  },
+  {
+   "start": 1800000007.0,
+   "end": 1800000008.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 21.00478361808638,
+     "mains_share": 0.008209111590939441
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.158659998097217,
+     "mains_share": 0.006982586405050722
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.556648246033983,
+     "mains_share": 0.01075318051999148
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.355554021323616,
+     "mains_share": 0.01896794467788688
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "yes",
+   "tension": "no",
+   "tension_uv": 3.9801888781211323,
+   "movement": "still"
+  },
+  {
+   "start": 1800000008.0,
+   "end": 1800000009.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.18118452837171,
+     "mains_share": 0.0054645970995577916
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 29.157469695970065,
+     "mains_share": 0.003027582993523348
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 26.779779488650625,
+     "mains_share": 0.0016573426789812222
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.300661027458954,
+     "mains_share": 0.00480181807098097
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "yes",
+   "tension": "no",
+   "tension_uv": 4.463673989139585,
+   "movement": "still"
+  },
+  {
+   "start": 1800000009.0,
+   "end": 1800000010.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.303312449587004,
+     "mains_share": 0.015712399928273182
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 30.631411264147555,
+     "mains_share": 0.0019304428459945347
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 28.597272887318482,
+     "mains_share": 0.003294266845203035
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 17.568275173918412,
+     "mains_share": 0.01225539847789304
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "yes",
+   "tension": "no",
+   "tension_uv": 4.298005955511941,
+   "movement": "still"
+  },
+  {
+   "start": 1800000010.0,
+   "end": 1800000011.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.010380665936573,
+     "mains_share": 0.010562368323547238
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 28.693984143717365,
+     "mains_share": 0.0012544555431732616
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 29.356623051955296,
+     "mains_share": 0.0005203214798283314
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.551905947143183,
+     "mains_share": 0.012682592552093211
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "yes",
+   "tension": "no",
+   "tension_uv": 4.527903092045682,
+   "movement": "still"
+  },
+  {
+   "start": 1800000011.0,
+   "end": 1800000012.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.65600815641128,
+     "mains_share": 0.014297105589784668
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 26.983801785937544,
+     "mains_share": 0.001693446872640798
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 30.422305002391237,
+     "mains_share": 0.0010873613738897274
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.59204585347593,
+     "mains_share": 0.025569011952370956
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "yes",
+   "tension": "no",
+   "tension_uv": 4.38368623772429,
+   "movement": "still"
+  },
+  {
+   "start": 1800000012.0,
+   "end": 1800000013.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.019168271582583,
+     "mains_share": 0.01507977944063029
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.17805871877773,
+     "mains_share": 0.01703002877418355
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.984162189956194,
+     "mains_share": 0.007153696476212397
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.685575996090027,
+     "mains_share": 0.006528938692842762
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 4.650119573158974,
+   "movement": "still"
+  },
+  {
+   "start": 1800000013.0,
+   "end": 1800000014.0,
+   "contact": {
+    "TP9": {
+     "state": "noisy",
+     "reason": "loud",
+     "spread_uv": 221.84232342674932,
+     "mains_share": 0.06995455131327252
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 32.98779819183835,
+     "mains_share": 0.029725276140908006
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 33.77827727917897,
+     "mains_share": 0.06068663904988128
+    },
+    "TP10": {
+     "state": "noisy",
+     "reason": "loud",
+     "spread_uv": 185.64463412304016,
+     "mains_share": 0.05611530634791696
+    }
+   },
+   "coverage": {
+    "level": "reduced",
+    "out": [
+     "TP9",
+     "TP10"
+    ]
+   },
+   "eye": "no",
+   "tension": "yes",
+   "tension_uv": 14.383547673648438,
+   "movement": "still"
+  },
+  {
+   "start": 1800000014.0,
+   "end": 1800000015.0,
+   "contact": {
+    "TP9": {
+     "state": "noisy",
+     "reason": "loud",
+     "spread_uv": 229.14722244100804,
+     "mains_share": 0.024615589167382008
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 29.598372817910725,
+     "mains_share": 0.057525825918545416
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 33.21037507940328,
+     "mains_share": 0.013995628387312421
+    },
+    "TP10": {
+     "state": "noisy",
+     "reason": "loud",
+     "spread_uv": 217.69675719758774,
+     "mains_share": 0.036767492644235004
+    }
+   },
+   "coverage": {
+    "level": "reduced",
+    "out": [
+     "TP9",
+     "TP10"
+    ]
+   },
+   "eye": "no",
+   "tension": "yes",
+   "tension_uv": 16.156702938687737,
+   "movement": "still"
+  },
+  {
+   "start": 1800000015.0,
+   "end": 1800000016.0,
+   "contact": {
+    "TP9": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 19.315379303713076,
+     "mains_share": 0.007126379067831444
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 21.127308604412846,
+     "mains_share": 0.007410529488164193
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 21.05211089718793,
+     "mains_share": 0.016983775558446004
+    },
+    "TP10": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 20.492009452062128,
+     "mains_share": 0.021066879116309126
+    }
+   },
+   "coverage": {
+    "level": "reduced",
+    "out": [
+     "TP9",
+     "TP10"
+    ]
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 4.109072357233682,
+   "movement": "still"
+  },
+  {
+   "start": 1800000016.0,
+   "end": 1800000017.0,
+   "contact": {
+    "TP9": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 18.757977150399338,
+     "mains_share": 0.009924835102228803
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.02907786785638,
+     "mains_share": 0.025533385580988995
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 21.03331736207031,
+     "mains_share": 0.0037277755857506967
+    },
+    "TP10": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 20.88140391213142,
+     "mains_share": 0.007795009006947002
+    }
+   },
+   "coverage": {
+    "level": "reduced",
+    "out": [
+     "TP9",
+     "TP10"
+    ]
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 4.58358538691932,
+   "movement": "moving"
+  },
+  {
+   "start": 1800000017.0,
+   "end": 1800000018.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.26959999800849,
+     "mains_share": 0.003967194447722562
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.017869661239047,
+     "mains_share": 0.008714669921039711
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.94822778880356,
+     "mains_share": 0.013591021309172559
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.264915889033063,
+     "mains_share": 0.009197896464010402
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 4.919214043993415,
+   "movement": "moving"
+  },
+  {
+   "start": 1800000018.0,
+   "end": 1800000019.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.32484147280859,
+     "mains_share": 0.010735132246883803
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.774066272744925,
+     "mains_share": 0.012676417627790135
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.375734124672295,
+     "mains_share": 0.007570468231565667
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.203170968977236,
+     "mains_share": 0.007115641782490886
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 4.885593787471834,
+   "movement": "still"
+  },
+  {
+   "start": 1800000019.0,
+   "end": 1800000020.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 21.056400421317704,
+     "mains_share": 0.005355540528072959
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.087548742734626,
+     "mains_share": 0.019197790901871816
+    },
+    "AF8": {
+     "state": "none",
+     "reason": "floating",
+     "spread_uv": 39.63026425022486,
+     "mains_share": 0.01124293300207472
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 21.443455998123568,
+     "mains_share": 0.0182761199212914
+    }
+   },
+   "coverage": {
+    "level": "one_forehead",
+    "out": [
+     "AF8"
+    ]
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 5.07750497457867,
+   "movement": "still"
+  },
+  {
+   "start": 1800000020.0,
+   "end": 1800000021.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.109342950924056,
+     "mains_share": 0.010580266431120911
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.76122817166582,
+     "mains_share": 0.013521827797950704
+    },
+    "AF8": {
+     "state": "none",
+     "reason": "floating",
+     "spread_uv": 40.10440429193188,
+     "mains_share": 0.002436781462367723
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.81359335660335,
+     "mains_share": 0.005859776552587434
+    }
+   },
+   "coverage": {
+    "level": "one_forehead",
+    "out": [
+     "AF8"
+    ]
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 5.6997283750333265,
+   "movement": "still"
+  },
+  {
+   "start": 1800000021.0,
+   "end": 1800000022.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 17.592327497883232,
+     "mains_share": 0.010965870431570487
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.612887428912735,
+     "mains_share": 0.009861299877632047
+    },
+    "AF8": {
+     "state": "none",
+     "reason": "floating",
+     "spread_uv": 35.085898046573334,
+     "mains_share": 0.0038210840033834144
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.942358578487624,
+     "mains_share": 0.005856991074363299
+    }
+   },
+   "coverage": {
+    "level": "one_forehead",
+    "out": [
+     "AF8"
+    ]
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 4.9043780523607445,
+   "movement": "still"
+  },
+  {
+   "start": 1800000022.0,
+   "end": 1800000023.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.227504574687604,
+     "mains_share": 0.005139790236163246
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.206663361093653,
+     "mains_share": 0.00410734897578994
+    },
+    "AF8": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 19.847203766448857,
+     "mains_share": 0.005060408516155537
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.300271224050594,
+     "mains_share": 0.013057088195722556
+    }
+   },
+   "coverage": {
+    "level": "one_forehead",
+    "out": [
+     "AF8"
+    ]
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 4.857464035317999,
+   "movement": "still"
+  },
+  {
+   "start": 1800000023.0,
+   "end": 1800000024.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.49968795201387,
+     "mains_share": 0.0269380339819526
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.66634740250476,
+     "mains_share": 0.006891255280672672
+    },
+    "AF8": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 19.221350240189288,
+     "mains_share": 0.010041695434304507
+    },
+    "TP10": {
+     "state": "noisy",
+     "reason": "loud",
+     "spread_uv": 140.07832951833598,
+     "mains_share": 0.06907791730517399
+    }
+   },
+   "coverage": {
+    "level": "one_forehead",
+    "out": [
+     "AF8",
+     "TP10"
+    ]
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 5.16174674012867,
+   "movement": "still"
+  },
+  {
+   "start": 1800000024.0,
+   "end": 1800000025.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.96904993506031,
+     "mains_share": 0.010351969717456912
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.255450473303814,
+     "mains_share": 0.0075511556875444905
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.839816006183522,
+     "mains_share": 0.01713934860264332
+    },
+    "TP10": {
+     "state": "noisy",
+     "reason": "loud",
+     "spread_uv": 152.37428534010394,
+     "mains_share": 0.11256267244281348
+    }
+   },
+   "coverage": {
+    "level": "reduced",
+    "out": [
+     "TP10"
+    ]
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 4.770973959369107,
+   "movement": "still"
+  },
+  {
+   "start": 1800000025.0,
+   "end": 1800000026.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.408995052351674,
+     "mains_share": 0.006998565995627748
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 21.067192304661322,
+     "mains_share": 0.005864220248063371
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.439430120769565,
+     "mains_share": 0.008819607162810352
+    },
+    "TP10": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 20.160510729843434,
+     "mains_share": 0.008679037532055475
+    }
+   },
+   "coverage": {
+    "level": "reduced",
+    "out": [
+     "TP10"
+    ]
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 4.373623007838805,
+   "movement": "still"
+  },
+  {
+   "start": 1800000026.0,
+   "end": 1800000027.0,
+   "contact": {
+    "TP9": {
+     "state": "none",
+     "reason": "flat",
+     "spread_uv": 0.0,
+     "mains_share": 0.0
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.60329165642976,
+     "mains_share": 0.008944903284759567
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.918755756283595,
+     "mains_share": 0.004418979868127381
+    },
+    "TP10": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 19.5810261424985,
+     "mains_share": 0.00753516008538179
+    }
+   },
+   "coverage": {
+    "level": "reduced",
+    "out": [
+     "TP9",
+     "TP10"
+    ]
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 4.519207141259569,
+   "movement": "still"
+  },
+  {
+   "start": 1800000027.0,
+   "end": 1800000028.0,
+   "contact": {
+    "TP9": {
+     "state": "none",
+     "reason": "flat",
+     "spread_uv": 0.0,
+     "mains_share": 0.0
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.222575810795217,
+     "mains_share": 0.0073187951957792265
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.935546802744977,
+     "mains_share": 0.011858828575063405
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.098209650831084,
+     "mains_share": 0.014984726713845707
+    }
+   },
+   "coverage": {
+    "level": "reduced",
+    "out": [
+     "TP9"
+    ]
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 4.4100218569096175,
+   "movement": "still"
+  },
+  {
+   "start": 1800000028.0,
+   "end": 1800000029.0,
+   "contact": {
+    "TP9": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 19.111764682521315,
+     "mains_share": 0.015201258812787924
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.232369636462934,
+     "mains_share": 0.006309419659134191
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 21.710032665131312,
+     "mains_share": 0.01819749467168329
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.139747608974407,
+     "mains_share": 0.00986147083800231
+    }
+   },
+   "coverage": {
+    "level": "reduced",
+    "out": [
+     "TP9"
+    ]
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 4.9072326736421905,
+   "movement": "still"
+  },
+  {
+   "start": 1800000029.0,
+   "end": 1800000030.0,
+   "contact": {
+    "TP9": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 19.170097728026068,
+     "mains_share": 0.010377366037876872
+    },
+    "AF7": {
+     "state": "none",
+     "reason": "railed",
+     "spread_uv": 0.0,
+     "mains_share": 3.702244899352742e-11
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.52708857060883,
+     "mains_share": 0.01920030789734564
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.444966155847716,
+     "mains_share": 0.010799522694020543
+    }
+   },
+   "coverage": {
+    "level": "one_forehead",
+    "out": [
+     "TP9",
+     "AF7"
+    ]
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 4.105470084590511,
+   "movement": "still"
+  },
+  {
+   "start": 1800000030.0,
+   "end": 1800000031.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.61666780705407,
+     "mains_share": 0.015620461843518915
+    },
+    "AF7": {
+     "state": "none",
+     "reason": "railed",
+     "spread_uv": 0.0,
+     "mains_share": 3.702244899352742e-11
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 16.93689222808772,
+     "mains_share": 0.00627270966032412
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.326081045531936,
+     "mains_share": 0.011140657159904836
+    }
+   },
+   "coverage": {
+    "level": "one_forehead",
+    "out": [
+     "AF7"
+    ]
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 4.727189736831152,
+   "movement": "still"
+  },
+  {
+   "start": 1800000031.0,
+   "end": 1800000032.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.321209779540553,
+     "mains_share": 0.008863727208726203
+    },
+    "AF7": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 20.192934220648695,
+     "mains_share": 0.008835984409835589
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.03511498762153,
+     "mains_share": 0.010890730260776069
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.72844314602439,
+     "mains_share": 0.022638784810035038
+    }
+   },
+   "coverage": {
+    "level": "one_forehead",
+    "out": [
+     "AF7"
+    ]
+   },
+   "eye": "yes",
+   "tension": "no",
+   "tension_uv": 4.160420262286773,
+   "movement": "still"
+  },
+  {
+   "start": 1800000032.0,
+   "end": 1800000033.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.517049889699603,
+     "mains_share": 0.024130012084571408
+    },
+    "AF7": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 27.793792615151556,
+     "mains_share": 0.0013719738892505142
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 31.740572605166367,
+     "mains_share": 0.0015792633255583852
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.66168837722889,
+     "mains_share": 0.018828588719773703
+    }
+   },
+   "coverage": {
+    "level": "one_forehead",
+    "out": [
+     "AF7"
+    ]
+   },
+   "eye": "yes",
+   "tension": "no",
+   "tension_uv": 3.898131649889865,
+   "movement": "still"
+  },
+  {
+   "start": 1800000033.0,
+   "end": 1800000034.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.969864274320972,
+     "mains_share": 0.009578133463971484
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 28.821898150138814,
+     "mains_share": 0.0038773041875385128
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 31.60434388626804,
+     "mains_share": 0.0015215953802042795
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 17.763168180978884,
+     "mains_share": 0.010640249240866284
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "yes",
+   "tension": "no",
+   "tension_uv": 4.447663950296853,
+   "movement": "still"
+  },
+  {
+   "start": 1800000034.0,
+   "end": 1800000035.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.992800633337385,
+     "mains_share": 0.00882363509296542
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 21.711927815865184,
+     "mains_share": 0.007442497041169667
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.110996146108487,
+     "mains_share": 0.007776759183753848
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.30090711289899,
+     "mains_share": 0.017743731285301496
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 4.591876623967275,
+   "movement": "still"
+  },
+  {
+   "start": 1800000035.0,
+   "end": 1800000036.0,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.22686057821643,
+     "mains_share": 0.010231554746239909
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.019211713436544,
+     "mains_share": 0.009953141193830178
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.86895458709154,
+     "mains_share": 0.012027525851852442
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.228504378690808,
+     "mains_share": 0.0023903531103980848
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 4.92125073254401,
+   "movement": "still"
+  },
+  {
+   "start": 1800000036.0,
+   "end": 1800000037.5,
+   "no_data": true
+  },
+  {
+   "start": 1800000037.5,
+   "end": 1800000038.5,
+   "contact": {
+    "TP9": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 19.146433390678855,
+     "mains_share": 0.02002258126451833
+    },
+    "AF7": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 19.25463341847842,
+     "mains_share": 0.01128716171900481
+    },
+    "AF8": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 17.76993079035881,
+     "mains_share": 0.022904750065280324
+    },
+    "TP10": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 20.731905735686066,
+     "mains_share": 0.01220505743072472
+    }
+   },
+   "coverage": {
+    "level": "none",
+    "out": [
+     "TP9",
+     "AF7",
+     "AF8",
+     "TP10"
+    ]
+   },
+   "eye": "unavailable",
+   "tension": "no",
+   "tension_uv": 4.135178557620034,
+   "movement": "still"
+  },
+  {
+   "start": 1800000038.5,
+   "end": 1800000039.5,
+   "contact": {
+    "TP9": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 20.290410487656487,
+     "mains_share": 0.01182840907372754
+    },
+    "AF7": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 20.298178804387145,
+     "mains_share": 0.004111020011503531
+    },
+    "AF8": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 20.087185401179074,
+     "mains_share": 0.014282994112745428
+    },
+    "TP10": {
+     "state": "settling",
+     "reason": null,
+     "spread_uv": 18.932720061131203,
+     "mains_share": 0.005525612425587977
+    }
+   },
+   "coverage": {
+    "level": "none",
+    "out": [
+     "TP9",
+     "AF7",
+     "AF8",
+     "TP10"
+    ]
+   },
+   "eye": "unavailable",
+   "tension": "no",
+   "tension_uv": 4.88205600450196,
+   "movement": "still"
+  },
+  {
+   "start": 1800000039.5,
+   "end": 1800000040.5,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.3814089310229,
+     "mains_share": 0.01598203261718189
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.69869974631318,
+     "mains_share": 0.013350062005063999
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.933502779752423,
+     "mains_share": 0.008564640628643322
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 17.63907209350366,
+     "mains_share": 0.008782022090009941
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "unavailable",
+   "tension": "no",
+   "tension_uv": 4.35862331646141,
+   "movement": "still"
+  },
+  {
+   "start": 1800000040.5,
+   "end": 1800000041.5,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.558398064204788,
+     "mains_share": 0.0056098174229604995
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.320792621279704,
+     "mains_share": 0.007140921627647227
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.917743017223092,
+     "mains_share": 0.005390677436607201
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.83823885824386,
+     "mains_share": 0.010338397732521688
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "unavailable",
+   "tension": "no",
+   "tension_uv": 4.714309823932787,
+   "movement": "still"
+  },
+  {
+   "start": 1800000041.5,
+   "end": 1800000042.5,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.14076907700255,
+     "mains_share": 0.009559351873003375
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.30170413662592,
+     "mains_share": 0.004145831347015318
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.960175915701633,
+     "mains_share": 0.010543239555137883
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.291243709946112,
+     "mains_share": 0.009930738834255052
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "unavailable",
+   "tension": "no",
+   "tension_uv": 4.0869200550779325,
+   "movement": "still"
+  },
+  {
+   "start": 1800000042.5,
+   "end": 1800000043.5,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.76985548415775,
+     "mains_share": 0.009526685205591853
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.717350157333897,
+     "mains_share": 0.017769804296455357
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.53387032083306,
+     "mains_share": 0.0021395336226561266
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.99801070313503,
+     "mains_share": 0.006640632196776697
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 4.057647197521168,
+   "movement": "still"
+  },
+  {
+   "start": 1800000043.5,
+   "end": 1800000044.5,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 17.596690026393645,
+     "mains_share": 0.006012876062776536
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.941000126422765,
+     "mains_share": 0.006560618080834878
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.45209580993582,
+     "mains_share": 0.01726342934181971
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.99952939660247,
+     "mains_share": 0.018215826372588242
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 4.393382208646404,
+   "movement": "still"
+  },
+  {
+   "start": 1800000044.5,
+   "end": 1800000045.5,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.45868967100051,
+     "mains_share": 0.003960068907788446
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.12933717219174,
+     "mains_share": 0.009686408966951112
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.227088914067494,
+     "mains_share": 0.008620413554527043
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.412403290151243,
+     "mains_share": 0.007181244624892843
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 4.585897336795004,
+   "movement": "still"
+  },
+  {
+   "start": 1800000045.5,
+   "end": 1800000046.5,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.191881132477832,
+     "mains_share": 0.004398844452325121
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.897442682335896,
+     "mains_share": 0.01768613521877002
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.651121040801375,
+     "mains_share": 0.0069086061099115715
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 19.65786351346357,
+     "mains_share": 0.004633655691726018
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 4.677744084018888,
+   "movement": "still"
+  },
+  {
+   "start": 1800000046.5,
+   "end": 1800000047.5,
+   "contact": {
+    "TP9": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.42004667588945,
+     "mains_share": 0.005763582439287707
+    },
+    "AF7": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.477503579798977,
+     "mains_share": 0.004192471925065876
+    },
+    "AF8": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 18.309738868958533,
+     "mains_share": 0.002944511076929005
+    },
+    "TP10": {
+     "state": "good",
+     "reason": null,
+     "spread_uv": 20.722452807595094,
+     "mains_share": 0.011184658182896946
+    }
+   },
+   "coverage": {
+    "level": "full",
+    "out": []
+   },
+   "eye": "no",
+   "tension": "no",
+   "tension_uv": 4.871840800290675,
+   "movement": "still"
+  }
+ ],
+ "blinks": [
+  {
+   "t": 1800000008.0585938,
+   "duration_s": 0.53125
+  },
+  {
+   "t": 1800000009.0507812,
+   "duration_s": 0.52734375
+  },
+  {
+   "t": 1800000010.0507812,
+   "duration_s": 0.52734375
+  },
+  {
+   "t": 1800000011.0546875,
+   "duration_s": 0.5
+  },
+  {
+   "t": 1800000032.0625,
+   "duration_s": 0.48046875
+  },
+  {
+   "t": 1800000033.0625,
+   "duration_s": 0.484375
+  }
+ ],
+ "tension_spans": [
+  {
+   "start": 1800000013.0,
+   "end": 1800000015.0
+  }
+ ],
+ "movement_spans": [
+  {
+   "start": 1800000016.0,
+   "end": 1800000018.0
+  }
+ ]
+}

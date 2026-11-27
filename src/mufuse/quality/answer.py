@@ -181,3 +181,39 @@ class QualityAnswer:
             return self.disturbances
         part = contact.state if contact.reason is None else f"{contact.state}:{contact.reason}"
         return (part, *self.disturbances)
+
+
+def to_json(quality: SessionQuality) -> dict[str, object]:
+    """The JSON form of contracts/quality-interface.md: plain values only."""
+    answers: list[dict[str, object]] = []
+    for a in quality.answers:
+        if a.no_data:
+            answers.append({"start": a.start, "end": a.end, "no_data": True})
+            continue
+        answers.append(
+            {
+                "start": a.start,
+                "end": a.end,
+                "contact": {
+                    c.sensor: {
+                        "state": c.state,
+                        "reason": c.reason,
+                        "spread_uv": c.spread_uv,
+                        "mains_share": c.mains_share,
+                    }
+                    for c in a.contact
+                },
+                "coverage": {"level": a.coverage.level, "out": list(a.coverage.out)},
+                "eye": a.eye,
+                "tension": a.tension,
+                "tension_uv": a.tension_uv,
+                "movement": a.movement,
+            }
+        )
+    return {
+        "rules": quality.rules,
+        "answers": answers,
+        "blinks": [{"t": b.t, "duration_s": b.duration_s} for b in quality.blinks],
+        "tension_spans": [{"start": s.start, "end": s.end} for s in quality.tension_spans],
+        "movement_spans": [{"start": s.start, "end": s.end} for s in quality.movement_spans],
+    }

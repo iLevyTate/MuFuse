@@ -210,31 +210,31 @@ for every sensor and every stretch.
 
 ### Tests first
 
-- [ ] T034 [P] [US4] Test in `tests/integration/test_quality_replay.py` (SC-005): answers collected live while
+- [X] T034 [P] [US4] Test in `tests/integration/test_quality_replay.py` (SC-005): answers collected live while
   recording equal `judge()` on the recording, and equal the answers from `PlaybackSource` in seeded random chunk
   sizes; also with a dropout (a gap) and with a motion stream that stops
-- [ ] T035 [P] [US4] Test in `tests/integration/test_quality_ears.py` (SC-006): with TP9 and TP10 replaced by a
+- [X] T035 [P] [US4] Test in `tests/integration/test_quality_ears.py` (SC-006): with TP9 and TP10 replaced by a
   no-contact signal, the AF7 and AF8 contact states, every mark, `tension_uv`, the blinks and the spans are
   identical; only the ear contact states and the coverage differ
-- [ ] T036 [P] [US4] Tests in `tests/unit/test_quality_engine.py` (extend): every answer names the rules version;
+- [X] T036 [P] [US4] Tests in `tests/unit/test_quality_engine.py` (extend): every answer names the rules version;
   an answer once returned never changes; no module in `src/mufuse/quality/` imports a clock, a network or a file
   module outside `labelled.py` and `public_set.py` (FR-024, read from the source with `ast`); `to_json` holds every
   field of the answer
-- [ ] T037 [P] [US4] Test in `tests/unit/test_quality_reference.py` (FR-025): `judge()` on the session in
+- [X] T037 [P] [US4] Test in `tests/unit/test_quality_reference.py` (FR-025): `judge()` on the session in
   `tests/data/quality_reference/` reproduces `answers.json` within the tolerances of rules §9; the failure message
   names `RULES_VERSION` and `scripts/make_quality_reference.py`
-- [ ] T038 [P] [US4] Test in `tests/integration/test_quality_speed.py` (extend): judging costs under 5 ms per
+- [X] T038 [P] [US4] Test in `tests/integration/test_quality_speed.py` (extend): judging costs under 5 ms per
   second of signal
 
 ### Implementation
 
-- [ ] T039 [US4] `src/mufuse/quality/answer.py`: `to_json(quality)`; `src/mufuse/quality/__init__.py`: the public
+- [X] T039 [US4] `src/mufuse/quality/answer.py`: `to_json(quality)`; `src/mufuse/quality/__init__.py`: the public
   names `QualityEngine`, `Judged`, `judge`, `summarize`, `to_json`, `RULES_VERSION`
-- [ ] T040 [US4] `scripts/make_quality_reference.py`: a simulated session of about 45 s with every fault and event
+- [X] T040 [US4] `scripts/make_quality_reference.py`: a simulated session of about 45 s with every fault and event
   (research R9); it writes the session and `answers.json`, and refuses when a measured value lies within 5% of its
   limit
-- [ ] T041 [US4] Run T040 and add its output in `tests/data/quality_reference/` (simulator data only)
-- [ ] T042 [US4] Correct in `src/mufuse/quality/engine.py` and `src/mufuse/quality/stretch.py` whatever T034 to
+- [X] T041 [US4] Run T040 and add its output in `tests/data/quality_reference/` (simulator data only)
+- [X] T042 [US4] Correct in `src/mufuse/quality/engine.py` and `src/mufuse/quality/stretch.py` whatever T034 to
   T038 show; no rule is loosened to make a test pass
 
 **Checkpoint**: features 003, 005 and 006 can import `mufuse.quality` and read answers without judging anything.

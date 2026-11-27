@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -29,7 +30,9 @@ from mufuse.quality.motion import movement
 from mufuse.quality.rules import RULES, Rules
 from mufuse.quality.stretch import NoData, Stretch, StretchCutter
 from mufuse.quality.tension import tension
-from mufuse.recording.reader import LoadedSession
+
+if TYPE_CHECKING:  # a loaded session is handed in; the engine reads no file itself
+    from mufuse.recording.reader import LoadedSession
 
 _FOREHEAD_COLUMNS = [SENSORS.index(name) for name in FOREHEAD]  # AF7, AF8; TP9, TP10 never read
 JUDGE_STEP_S = 10.0  # a recording is fed in pieces of this long, in time order
