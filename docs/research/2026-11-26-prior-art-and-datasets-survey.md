@@ -522,7 +522,7 @@ None of these has been made. Each is a proposal for its owner to accept or rejec
 - 007 and 013: say sherpa-onnx 2.0 or later, and name turn-taking as a deliverable. The crisis path
   should say which country it serves.
 - 009: the scripts must be written originally. Consider peak-to-trough swing for the gate.
-- 010: replace flutter_blue_plus with universal_ble wherever it is named.
+- 010: the roadmap names no Bluetooth package. When its spec is written, plan on universal_ble.
 
 **`docs/KNOWN-ISSUES.md`** (ear sensors)
 
@@ -571,8 +571,9 @@ None of these has been made. Each is a proposal for its owner to accept or rejec
 
 **Elsewhere**
 
-- `docs/companion-experience` (PR #17) inherits "flutter_blue_plus on mobile" and a PySide6
-  fallback; pywebview and NiceGUI are permissively licensed alternatives.
+- `docs/design/2026-11-26-companion-experience.md` names Flutter for the desk strip and no
+  Bluetooth package or fallback. If a Python-only fallback is ever wanted, pywebview (BSD-3) and
+  NiceGUI (MIT) are permissively licensed; PySide6 is LGPL (3.6, 3.10).
 - Any mention of NEUROFUSION's Fusion as an open-source comparable is dead: the repository
   returns 404.
 - The cause of duplicate timestamps can be stated in `timing.py`: BrainFlow returns the current
