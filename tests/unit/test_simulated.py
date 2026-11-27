@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import signal
 from dataclasses import replace
 
@@ -8,9 +9,10 @@ import pytest
 
 from mufuse.acquisition import simulated
 from mufuse.acquisition.athena import ATHENA_STREAMS
+from mufuse.acquisition.contact import grade_window
 from mufuse.acquisition.simulated import CTRL_C, Rehearsal, SimulatedAthena, Wearer
 from mufuse.acquisition.types import Chunk, SourceError, StreamKind
-from tests.conftest import FakeClock
+from tests.conftest import FakeClock, rehearse
 
 
 def _collect(src: SimulatedAthena, clock: FakeClock, seconds: float) -> dict[StreamKind, Chunk]:
@@ -151,12 +153,80 @@ def test_a_lifted_sensor_floats_with_a_dip_every_12_samples(clock: FakeClock) ->
     assert data[up, TP9].std() < 20  # only the lifted one
 
 
-def test_a_clench_adds_broadband_activity_at_both_ears_only(clock: FakeClock) -> None:
+def test_a_clench_shows_at_both_ears_and_weaker_on_the_forehead(clock: FakeClock) -> None:
     data, t = _eeg(clock, replace(QUICK, clench=((2.0, 6.0),)))
     jaw = (t >= 2.0) & (t < 6.0)
     for ear in (TP9, TP10):
         assert data[jaw, ear].std() > 4 * data[~jaw, ear].std()
-    assert data[jaw, AF7].std() == pytest.approx(data[~jaw, AF7].std(), rel=0.2)
+    for forehead in (AF7, AF8):
+        assert data[jaw, forehead].std() > 1.5 * data[~jaw, forehead].std()
+        assert data[jaw, forehead].std() < 0.6 * data[jaw, TP9].std()
+        assert _grade(data, t, 3.0, forehead) == ("good", "quiet")  # still a usable sensor
+
+
+def _grade(data: np.ndarray, t: np.ndarray, second: float, channel: int) -> tuple[str, str]:
+    """How the contact check grades one sensor in the second that starts at `second`."""
+    reading = grade_window(data[(t >= second) & (t < second + 1.0), channel])
+    assert reading is not None
+    return reading.grade, reading.why
+
+
+def test_a_noisy_sensor_is_loud_but_touching(clock: FakeClock) -> None:
+    data, t = _eeg(clock, replace(QUICK, noisy=((2.0, 5.0, "AF7"),)))
+    assert _grade(data, t, 3.0, AF7) == ("noisy", "loud")
+    assert _grade(data, t, 3.0, AF8) == ("good", "quiet")
+    assert _grade(data, t, 6.0, AF7) == ("good", "quiet")
+
+
+def test_a_flat_sensor_gives_one_value(clock: FakeClock) -> None:
+    data, t = _eeg(clock, replace(QUICK, flat=((2.0, 5.0, "AF8"),)))
+    assert _grade(data, t, 3.0, AF8) == ("none", "flat")
+    assert _grade(data, t, 3.0, AF7) == ("good", "quiet")
+    assert _grade(data, t, 6.0, AF8) == ("good", "quiet")
+
+
+def test_a_railed_sensor_sits_at_the_limit_of_the_range(clock: FakeClock) -> None:
+    data, t = _eeg(clock, replace(QUICK, railed=((2.0, 5.0, "TP10"),)))
+    assert _grade(data, t, 3.0, TP10) == ("none", "railed")
+    assert _grade(data, t, 3.0, TP9) == ("good", "quiet")
+    assert data[:, TP10].max() == pytest.approx(724.96)
+
+
+def test_a_lifted_sensor_is_graded_as_no_contact(clock: FakeClock) -> None:
+    data, t = _eeg(clock, replace(QUICK, lifted=((2.0, 5.0, "AF7"),)))
+    assert _grade(data, t, 3.0, AF7)[0] == "none"
+
+
+def test_a_head_turn_swings_the_gyroscope(clock: FakeClock) -> None:
+    rehearsal = _worn(clock, replace(QUICK, turns=((2.0, 4.0),)))
+    src = rehearsal.source()
+    src.start()
+    motion = _collect(src, clock, 8.0)[StreamKind.MOTION]
+    t = _script_time(rehearsal, motion)
+    turning = (t >= 2.0) & (t < 4.0)
+    acc, gyro = motion.data[:, :3], motion.data[:, 3:]
+    speed = np.sqrt((gyro**2).sum(axis=1))
+    assert np.sqrt(np.mean(speed[turning] ** 2)) > 50.0  # deg/s
+    assert np.abs(gyro[turning]).max() == pytest.approx(100.0, rel=0.1)
+    assert np.sqrt(np.mean(speed[~turning] ** 2)) < 1.0
+    assert acc[turning].std(axis=0).max() > 2 * acc[~turning].std(axis=0).max()  # a small change
+    assert acc[turning].std(axis=0).max() < 0.05  # g
+
+
+def test_a_wearer_without_the_new_faults_gives_the_samples_of_before(clock: FakeClock) -> None:
+    # Pinned before feature 002 changed the simulator: the checks of feature 001 keep their signal.
+    wearer = replace(QUICK, lifted=((1.0, 2.0, "TP9"),), blinks=((2.0, 4.0),))
+    reads = rehearse(wearer, clock, 4.0)
+    expected = {
+        StreamKind.EEG: ((1024, 8), "c656c2269558f4e4", -8827.06028565366),
+        StreamKind.MOTION: ((208, 6), "1df6d19b42e63f75", 207.66953079969386),
+        StreamKind.OPTICS: ((256, 17), "b17e1d5e27375d4e", 600840731.1472332),
+    }
+    for kind, (shape, digest, total) in expected.items():
+        data = np.concatenate([c.data for read in reads for c in read if c.kind is kind])
+        assert data.shape == shape
+        assert float(data.sum()) == pytest.approx(total, rel=1e-12)
+        assert hashlib.sha256(np.ascontiguousarray(data).tobytes()).hexdigest()[:16] == digest
 
 
 def test_blinks_show_on_the_forehead_about_once_a_second(clock: FakeClock) -> None:

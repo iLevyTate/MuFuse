@@ -28,10 +28,10 @@ Single package: `src/mufuse/`, `tests/`, `scripts/` at the repository root (see 
 
 **Purpose**: the empty package and the shared test helpers.
 
-- [ ] T001 Create the package `src/mufuse/quality/__init__.py` (docstring only; the public names come in T039) and
+- [X] T001 Create the package `src/mufuse/quality/__init__.py` (docstring only; the public names come in T039) and
   `tests/data/quality_reference/README.md`, which says that the files beside it are made by the simulator, hold no
   personal data, and are rewritten only by `scripts/make_quality_reference.py`
-- [ ] T002 Add shared helpers to `tests/conftest.py`: build EEG and MOTION `Chunk`s from arrays with timestamps;
+- [X] T002 Add shared helpers to `tests/conftest.py`: build EEG and MOTION `Chunk`s from arrays with timestamps;
   run a scripted `Wearer` through `Rehearsal` on `FakeClock` for N seconds and return the chunks as delivered
 
 ---
@@ -43,33 +43,33 @@ Single package: `src/mufuse/`, `tests/`, `scripts/` at the repository root (see 
 
 ### Tests first
 
-- [ ] T003 [P] Tests in `tests/unit/test_quality_answer.py`: `Rules` is frozen and `RULES_VERSION == "1"`; the
+- [X] T003 [P] Tests in `tests/unit/test_quality_answer.py`: `Rules` is frozen and `RULES_VERSION == "1"`; the
   derived values `disturbances` (order), `clean(sensor)` and `reasons(sensor)`; the no-data answer; all as in
   `data-model.md`, "Derived values of an answer"
-- [ ] T004 [P] Tests in `tests/unit/test_quality_stretch.py` for rules §1, items 1 to 6: anchor; gap above 0.25 s;
+- [X] T004 [P] Tests in `tests/unit/test_quality_stretch.py` for rules §1, items 1 to 6: anchor; gap above 0.25 s;
   256 samples per stretch; samples left before a gap are not judged and one no-data answer covers the gap; when a
   stretch is judged (64 EEG samples past its end and motion up to its end, else the 1.0 s fallback, else at a gap
   or at finish); motion samples by timestamp; the same stretches for any way of splitting the input into chunks
   (seeded random sizes)
-- [ ] T005 [P] Tests in `tests/unit/test_simulated.py` (extend) for research R14: `Wearer.noisy`, `Wearer.flat`,
+- [X] T005 [P] Tests in `tests/unit/test_simulated.py` (extend) for research R14: `Wearer.noisy`, `Wearer.flat`,
   `Wearer.railed` (from, to, channel) and `Wearer.turns` (from, to); a clench also shows on AF7 and AF8; a turn
   shows on the gyroscope; `grade_window` grades each fault as intended; a `Wearer` with the new fields empty gives
   the same samples as before for the same seed
 
 ### Implementation
 
-- [ ] T006 [P] `src/mufuse/quality/rules.py`: `RULES_VERSION`, the frozen dataclass `Rules` with every limit of
+- [X] T006 [P] `src/mufuse/quality/rules.py`: `RULES_VERSION`, the frozen dataclass `Rules` with every limit of
   `contracts/quality-rules.md`, and `RULES`. Field per `data-model.md`: `Rules.version`
-- [ ] T007 `src/mufuse/quality/answer.py`: the types `ContactState`, `Coverage`, `Blink`, `Span`, `QualityAnswer`
+- [X] T007 `src/mufuse/quality/answer.py`: the types `ContactState`, `Coverage`, `Blink`, `Span`, `QualityAnswer`
   with the derived values of T003. Fields per `data-model.md`: `ContactState.sensor`, `ContactState.state`,
   `ContactState.reason`, `ContactState.spread_uv`, `ContactState.mains_share`, `Coverage.level`, `Coverage.out`,
   `Blink.t`, `Blink.duration_s`, `Span.kind`, `Span.start`, `Span.end`, `QualityAnswer.start`,
   `QualityAnswer.end`, `QualityAnswer.rules`, `QualityAnswer.contact`, `QualityAnswer.coverage`,
   `QualityAnswer.eye`, `QualityAnswer.tension`, `QualityAnswer.tension_uv`, `QualityAnswer.movement`,
   `QualityAnswer.no_data`
-- [ ] T008 `src/mufuse/quality/stretch.py`: the cutter of rules §1 (it keeps samples, hands out stretches that are
+- [X] T008 `src/mufuse/quality/stretch.py`: the cutter of rules §1 (it keeps samples, hands out stretches that are
   ready, and reports gaps). Fields per `data-model.md`: `Stretch.start`, `Stretch.end`
-- [ ] T009 `src/mufuse/acquisition/simulated.py`: the faults and events of T005. `tests/integration/test_rehearsal.py`
+- [X] T009 `src/mufuse/acquisition/simulated.py`: the faults and events of T005. `tests/integration/test_rehearsal.py`
   and `tests/integration/test_sitting.py` stay green with no edit to `acceptance.py` or `signal_check.py`; if the H8
   rehearsal changes, correct the simulator's amplitude, never the check
 

@@ -7,24 +7,29 @@ not judge quality themselves (FR-014).
 # mufuse.quality
 RULES_VERSION: str  # "1"
 
+
 class QualityEngine:
     def __init__(self, rules: Rules = RULES) -> None: ...
-    def feed(self, chunks: Sequence[Chunk]) -> Judged: ...   # any chunk sizes, any stream order
-    def finish(self) -> Judged: ...                          # end of session: judge what still waits
+    def feed(self, chunks: Sequence[Chunk]) -> Judged: ...  # any chunk sizes, any stream order
+    def finish(self) -> Judged: ...  # end of session: judge what still waits
+
 
 @dataclass(frozen=True)
 class Judged:
-    answers: tuple[QualityAnswer, ...]   # newly judged stretches and gaps, in time order
-    blinks: tuple[Blink, ...]            # blinks that ended since the last call
+    answers: tuple[QualityAnswer, ...]  # newly judged stretches and gaps, in time order
+    blinks: tuple[Blink, ...]  # blinks that ended since the last call
+
 
 def judge(session: LoadedSession, rules: Rules = RULES) -> SessionQuality: ...
 def summarize(quality: SessionQuality) -> QualitySummary: ...
 
-class QualityAnswer:                     # fields: data-model.md
+
+class QualityAnswer:  # fields: data-model.md
     def clean(self, sensor: str) -> bool: ...
     def reasons(self, sensor: str) -> tuple[str, ...]: ...
     @property
     def disturbances(self) -> tuple[str, ...]: ...
+
 
 def to_json(quality: SessionQuality) -> dict[str, object]: ...
 ```

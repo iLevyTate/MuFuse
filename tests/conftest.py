@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import numpy as np
 import pytest
+
+from mufuse.acquisition.athena import ATHENA_STREAMS
+from mufuse.acquisition.simulated import Rehearsal, Wearer
+from mufuse.acquisition.types import Chunk, StreamKind
 
 
 class FakeClock:
@@ -33,3 +38,40 @@ def _isolated_run_log(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pyt
     monkeypatch.delenv("MUFUSE_T0", raising=False)
     monkeypatch.delenv("MUFUSE_RUN_LABEL", raising=False)
     monkeypatch.delenv("MUFUSE_SIM_WEARER", raising=False)
+
+
+# Signal quality helpers ------------------------------------------------------------------------
+
+QUICK = Wearer(connect_s=0.0, first_data_s=0.0, scan_s=0.0, stop_s=0.0)  # data from second 0
+
+
+def stream_chunk(kind: StreamKind, data: object, t0: float = 0.0) -> Chunk:
+    """One chunk of `kind` from rows of samples, stamped at the stream's rate from `t0`."""
+    rows = np.atleast_2d(np.asarray(data, dtype=np.float64))
+    spec = ATHENA_STREAMS[kind]
+    full = np.zeros((rows.shape[0], len(spec.channel_names)))
+    full[:, : rows.shape[1]] = rows
+    return Chunk(kind, t0 + np.arange(rows.shape[0]) / spec.sampling_rate, full)
+
+
+def eeg_chunk(data: object, t0: float = 0.0) -> Chunk:
+    """EEG from (n, 4) columns TP9, AF7, AF8, TP10; the AUX columns are zero."""
+    return stream_chunk(StreamKind.EEG, data, t0)
+
+
+def motion_chunk(data: object, t0: float = 0.0) -> Chunk:
+    """MOTION from (n, 6) columns ACC_X/Y/Z, GYRO_X/Y/Z."""
+    return stream_chunk(StreamKind.MOTION, data, t0)
+
+
+def rehearse(
+    wearer: Wearer, clock: FakeClock, seconds: float, *, tick: float = 0.25, seed: int = 0
+) -> list[list[Chunk]]:
+    """What a scripted wearer's headband delivers in `seconds`, one list of chunks per read."""
+    source = Rehearsal(wearer, clock=clock, sleep=clock.advance, seed=seed).source()
+    source.start()
+    reads: list[list[Chunk]] = []
+    for _ in range(round(seconds / tick)):
+        clock.advance(tick)
+        reads.append(source.read())
+    return reads
