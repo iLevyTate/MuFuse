@@ -66,6 +66,33 @@ class Span:
     end: float
 
 
+@dataclass(frozen=True)
+class SessionQuality:
+    """The whole of one session, in time order: what `judge()` returns."""
+
+    rules: str
+    answers: tuple[QualityAnswer, ...]
+    blinks: tuple[Blink, ...]
+    tension_spans: tuple[Span, ...]
+    movement_spans: tuple[Span, ...]
+
+    @classmethod
+    def of(
+        cls,
+        answers: Sequence[QualityAnswer],
+        blinks: Sequence[Blink],
+        rules: str = RULES_VERSION,
+    ) -> SessionQuality:
+        answers = tuple(answers)
+        return cls(
+            rules=rules,
+            answers=answers,
+            blinks=tuple(blinks),
+            tension_spans=spans(answers, "tension"),
+            movement_spans=spans(answers, "movement"),
+        )
+
+
 def spans(answers: Sequence[QualityAnswer], kind: SpanKind) -> tuple[Span, ...]:
     """Marked stretches in a row are one span; an unmarked stretch or a gap ends it (rules §7)."""
     found: list[Span] = []

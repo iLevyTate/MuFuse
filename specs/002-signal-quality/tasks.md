@@ -173,28 +173,28 @@ share and count matches the script.
 
 ### Tests first
 
-- [ ] T028 [P] [US3] Tests in `tests/unit/test_quality_summary.py`: shares are taken over judged time; time without
+- [X] T028 [P] [US3] Tests in `tests/unit/test_quality_summary.py`: shares are taken over judged time; time without
   data is left out; a share with nothing to divide by is "not available", never 0; blinks per minute over the time
   the blink mark was available; the rules version is in the summary; the independent test above
-- [ ] T029 [P] [US3] Tests in `tests/integration/test_quality_cli.py` (extend): `mufuse inspect` prints the block
+- [X] T029 [P] [US3] Tests in `tests/integration/test_quality_cli.py` (extend): `mufuse inspect` prints the block
   "Signal quality (rules 1)" in the layout of `contracts/cli.md`; it works on a session that was not finalized and
   on one recorded before this feature; the recording's files are byte-identical afterwards; the exit codes of 001
   are unchanged; the summary texts are added to `tests/unit/test_quality_wording.py`
-- [ ] T030 [P] [US3] Test in `tests/integration/test_quality_speed.py` (SC-007): judging and summarizing a
+- [X] T030 [P] [US3] Test in `tests/integration/test_quality_speed.py` (SC-007): judging and summarizing a
   generated 60-minute session takes under 30 s
 
 ### Implementation
 
-- [ ] T031 [US3] `src/mufuse/quality/answer.py` and `src/mufuse/quality/engine.py`: the type `SessionQuality` and
+- [X] T031 [US3] `src/mufuse/quality/answer.py` and `src/mufuse/quality/engine.py`: the type `SessionQuality` and
   `judge(session, rules=RULES) -> SessionQuality`. Fields per `data-model.md`: `SessionQuality.rules`,
   `SessionQuality.answers`, `SessionQuality.blinks`, `SessionQuality.tension spans`,
   `SessionQuality.movement spans`
-- [ ] T032 [P] [US3] `src/mufuse/quality/summary.py`: `summarize(quality) -> QualitySummary`. Fields per
+- [X] T032 [P] [US3] `src/mufuse/quality/summary.py`: `summarize(quality) -> QualitySummary`. Fields per
   `data-model.md`: `QualitySummary.rules`, `QualitySummary.judged_s`, `QualitySummary.no_data_s`, the per-sensor
   shares (good, settling, noisy, no contact, clean), the coverage shares, `QualitySummary.blinks`,
   `QualitySummary.blinks_per_min`, `QualitySummary.blink_available_s`, the tension share, the movement share,
   `QualitySummary.movement_unknown_s`
-- [ ] T033 [US3] `src/mufuse/cli.py`: `inspect` prints the summary after its present output
+- [X] T033 [US3] `src/mufuse/cli.py`: `inspect` prints the summary after its present output
 
 **Checkpoint**: `uv run mufuse inspect <session>` ends with "Signal quality (rules 1)".
 

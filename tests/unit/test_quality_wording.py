@@ -21,7 +21,16 @@ from mufuse.live_view import (
     coverage_line,
     signal_line,
 )
-from mufuse.quality.answer import SENSORS, Coverage
+from mufuse.quality.answer import (
+    SENSORS,
+    Blink,
+    ContactState,
+    Coverage,
+    QualityAnswer,
+    SessionQuality,
+)
+from mufuse.quality.rules import RULES_VERSION
+from mufuse.quality.summary import summarize, summary_lines
 
 # Words that describe a state of the person rather than of a sensor or a signal.
 PERSON_WORDS = (
@@ -89,12 +98,37 @@ def _screens() -> list[Screen]:
     return screens
 
 
+def _summaries() -> list[list[str]]:
+    """The inspect block for a session with every state and mark, and for one without data."""
+    answers = []
+    for i, (state, reason) in enumerate([("good", None), ("settling", None), *OUT[1:]]):
+        contact = tuple(ContactState(n, state, reason, 50.0, 0.5) for n in SENSORS)  # type: ignore[arg-type]
+        answers.append(
+            QualityAnswer(
+                start=100.0 + i,
+                end=101.0 + i,
+                rules=RULES_VERSION,
+                contact=contact,
+                coverage=Coverage("none", SENSORS),
+                eye="yes",
+                tension="yes",
+                tension_uv=20.0,
+                movement="moving",
+            )
+        )
+    full = SessionQuality.of(tuple(answers), (Blink(101.0, 0.3),))
+    empty = SessionQuality.of((QualityAnswer.gap(100.0, 103.0),), ())
+    return [summary_lines(summarize(full)), summary_lines(summarize(empty))]
+
+
 def _texts() -> list[str]:
     texts = [NO_SENSOR, *COVERAGE_WORDS.values(), *SIGNAL_TEXTS.values()]
     texts += [template.format(name=n) for template in SENSOR_TEXTS.values() for n in SENSORS]
     for screen in _screens():
         texts += [coverage_line(screen, 200).plain, signal_line(screen, 200).plain]
         texts.append(screen.status_line())
+    for lines in _summaries():
+        texts += lines
     return texts
 
 

@@ -9,8 +9,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+import numpy as np
+
 from mufuse.acquisition.contact import grade_window
-from mufuse.acquisition.types import Chunk, FloatArray
+from mufuse.acquisition.types import Chunk, FloatArray, StreamKind
 from mufuse.quality.answer import (
     FOREHEAD,
     SENSORS,
@@ -18,6 +20,7 @@ from mufuse.quality.answer import (
     ContactState,
     QualityAnswer,
     Reason,
+    SessionQuality,
     State,
     coverage_of,
 )
@@ -26,8 +29,10 @@ from mufuse.quality.motion import movement
 from mufuse.quality.rules import RULES, Rules
 from mufuse.quality.stretch import NoData, Stretch, StretchCutter
 from mufuse.quality.tension import tension
+from mufuse.recording.reader import LoadedSession
 
 _FOREHEAD_COLUMNS = [SENSORS.index(name) for name in FOREHEAD]  # AF7, AF8; TP9, TP10 never read
+JUDGE_STEP_S = 10.0  # a recording is fed in pieces of this long, in time order
 
 
 @dataclass(frozen=True)
@@ -109,3 +114,33 @@ class QualityEngine:
         held = self._good[sensor] >= self._rules.hold_stretches
         state: State = "good" if held else "settling"
         return ContactState(sensor, state, reason, spread, mains)
+
+
+def judge(session: LoadedSession, rules: Rules = RULES) -> SessionQuality:
+    """The answers for a recorded session, the same as live (the recording is only read)."""
+    engine = QualityEngine(rules)
+    answers: list[QualityAnswer] = []
+    blinks: list[Blink] = []
+    streams = [
+        (kind, ts, data)
+        for kind, (ts, data) in session.streams.items()
+        if kind in (StreamKind.EEG, StreamKind.MOTION) and ts.size
+    ]
+    if streams:
+        first = min(float(ts[0]) for _, ts, _ in streams)
+        last = max(float(ts[-1]) for _, ts, _ in streams)
+        steps = int((last - first) // JUDGE_STEP_S) + 1
+        edges = first + JUDGE_STEP_S * np.arange(steps + 1)
+        edges[-1] = np.inf
+        cuts = [np.searchsorted(ts, edges) for _, ts, _ in streams]
+        for step in range(steps):
+            chunks = [
+                Chunk(kind, ts[cut[step] : cut[step + 1]], data[cut[step] : cut[step + 1]])
+                for (kind, ts, data), cut in zip(streams, cuts, strict=True)
+                if cut[step + 1] > cut[step]
+            ]
+            judged = engine.feed(chunks)
+            answers += judged.answers
+            blinks += judged.blinks
+    judged = engine.finish()
+    return SessionQuality.of((*answers, *judged.answers), (*blinks, *judged.blinks), rules.version)

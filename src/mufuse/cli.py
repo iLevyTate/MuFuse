@@ -31,6 +31,8 @@ from mufuse.config import load_config, save_config
 from mufuse.guide import Guide, guide_from_env
 from mufuse.keys import KeyPoller
 from mufuse.live_view import YELLOW, LiveStats, Screen, render
+from mufuse.quality.engine import judge
+from mufuse.quality.summary import summarize, summary_lines
 from mufuse.recording.format import Marker
 from mufuse.recording.reader import load_session
 from mufuse.recording.writer import SessionWriter
@@ -439,3 +441,10 @@ def inspect(path: Path) -> None:
     for g in session.gaps:
         dur = f"{g.end - g.start:.2f} s" if g.end is not None else "open"
         console.print(f"    gap {g.reason} {dur}")
+    try:
+        quality = summarize(judge(session))
+    except ValueError as exc:  # samples out of order: the summary cannot be made
+        console.print(f"Signal quality: not available ({exc})", markup=False, highlight=False)
+        return
+    for line in summary_lines(quality):
+        console.print(line, markup=False, highlight=False)
