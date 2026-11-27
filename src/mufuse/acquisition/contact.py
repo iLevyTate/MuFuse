@@ -18,16 +18,15 @@ TP10 gets one of three grades from its last 1 s of samples, before any centring:
 The Athena adds 1-3 µV lines at 21.3, 42.7 and 64 Hz (a pattern every 12 samples) in every
 preset; they are left out of the hum share.
 
-`ContactTracker` adds the hold: a sensor shows "settling" until it has been good for 3 s in a
-row, while a worse grade shows at once (within the 1 s window). Grades describe the signal, never
-the person, and their colours grade signal quality only (docs/BRAND.md).
+The hold (a sensor shows "settling" until it has been good for three judged seconds in a row,
+while a worse grade shows at once) lives in the quality engine, `mufuse.quality.engine`, which
+grades each second with `grade_window`. Grades describe the signal, never the person, and their
+colours grade signal quality only (docs/BRAND.md).
 """
 
 from __future__ import annotations
 
-import math
-import time
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -44,7 +43,6 @@ Shown = Literal["waiting", "none", "noisy", "settling", "good"]
 SENSORS = ATHENA_STREAMS[StreamKind.EEG].channel_names[:4]
 EEG_HZ = ATHENA_STREAMS[StreamKind.EEG].sampling_rate
 WINDOW_S = 1.0
-HOLD_S = 3.0  # good this long in a row before it shows as good
 MAINS_HZ = (50.0, 60.0)
 MAINS_SHARE = 0.60  # a loud sensor with at least this share of hum is not touching the skin
 INTERFERENCE_HZ = (EEG_HZ / 12, 2 * EEG_HZ / 12, 64.0)  # the Athena's own 21.3, 42.7, 64 Hz
@@ -112,42 +110,6 @@ def _near(freqs: FloatArray, lines: Sequence[float]) -> np.ndarray:
     for hz in lines:
         near |= np.abs(freqs - hz) <= LINE_HZ
     return near
-
-
-class ContactTracker:
-    """Grades the four sensors each time it is asked and holds a good grade back for 3 s."""
-
-    def __init__(
-        self,
-        *,
-        clock: Callable[[], float] = time.time,
-        names: Sequence[str] = SENSORS,
-        hold_s: float = HOLD_S,
-    ) -> None:
-        self._clock = clock
-        self._names = tuple(names)
-        self._hold_s = hold_s
-        self._good_since: dict[str, float] = {}
-
-    def update(self, eeg: FloatArray, rate: float = EEG_HZ) -> tuple[SensorView, ...]:
-        """`eeg` is the last second of samples (n, channels), the sensors in the first columns."""
-        now = self._clock()
-        views: list[SensorView] = []
-        for i, name in enumerate(self._names):
-            reading = grade_window(eeg[:, i], rate) if eeg.shape[0] else None
-            if reading is None or reading.grade != "good":
-                self._good_since.pop(name, None)
-                views.append(
-                    SensorView(name, "waiting" if reading is None else reading.grade, reading)
-                )
-                continue
-            since = self._good_since.setdefault(name, now)
-            left = self._hold_s - (now - since)
-            if left > 1e-9:
-                views.append(SensorView(name, "settling", reading, math.ceil(left - 1e-9)))
-            else:
-                views.append(SensorView(name, "good", reading))
-        return tuple(views)
 
 
 _RANK: dict[Shown, int] = {"none": 3, "noisy": 2, "settling": 1, "good": 0, "waiting": 0}

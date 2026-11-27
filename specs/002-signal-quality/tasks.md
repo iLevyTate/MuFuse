@@ -87,29 +87,29 @@ The view shows the right state and reason each time, and "reduced: forehead sens
 
 ### Tests first
 
-- [ ] T010 [P] [US1] Tests in `tests/unit/test_quality_contact.py` for rules §2: `settling`, `settling`, `good`;
+- [X] T010 [P] [US1] Tests in `tests/unit/test_quality_contact.py` for rules §2: `settling`, `settling`, `good`;
   the count goes back to zero on a noisy stretch, a no-contact stretch and a gap; one reason for each fault (flat,
   railed, hum, floating, loud); "no contact" is told apart from "noisy" (FR-004); a loss shows within 2 s
   (FR-003); non-finite samples; the four coverage levels and the order of `out`; headband not worn (four sensors
   without contact)
-- [ ] T011 [P] [US1] Tests in `tests/unit/test_live_view.py` (extend): the sensor panel shows the engine's states;
+- [X] T011 [P] [US1] Tests in `tests/unit/test_live_view.py` (extend): the sensor panel shows the engine's states;
   `waiting` before the first judged stretch; the Coverage line and every sensor text of `contracts/cli.md`,
   including "No sensor is touching skin. Is the headband on?"; nothing changes more often than once per stretch;
   only the three quality colours of `docs/BRAND.md` are used
-- [ ] T012 [P] [US1] Test in `tests/unit/test_quality_wording.py` (SC-009): render every text this story can show
+- [X] T012 [P] [US1] Test in `tests/unit/test_quality_wording.py` (SC-009): render every text this story can show
   and check each against a list of words that describe a person's state; each later story adds its texts here
-- [ ] T013 [P] [US1] Test in `tests/integration/test_quality_cli.py`: `mufuse stream` on a scripted simulator
+- [X] T013 [P] [US1] Test in `tests/integration/test_quality_cli.py`: `mufuse stream` on a scripted simulator
   source prints the Coverage line, and reads "reduced: forehead sensors good" when TP9 and TP10 are lifted
 
 ### Implementation
 
-- [ ] T014 [US1] `src/mufuse/quality/engine.py`: `QualityEngine(rules=RULES)` with `feed(chunks) -> Judged` and
+- [X] T014 [US1] `src/mufuse/quality/engine.py`: `QualityEngine(rules=RULES)` with `feed(chunks) -> Judged` and
   `finish() -> Judged` (`contracts/quality-interface.md`); contact per stretch through the unchanged
   `grade_window`, the hold counted in stretches, coverage. Until T026, `QualityAnswer.eye` and
   `QualityAnswer.tension` are `unavailable` and `QualityAnswer.movement` is `unknown` (never silent, FR-010)
-- [ ] T015 [US1] `src/mufuse/live_view.py`: `LiveStats` owns one `QualityEngine`; `contact()` reads the newest
+- [X] T015 [US1] `src/mufuse/live_view.py`: `LiveStats` owns one `QualityEngine`; `contact()` reads the newest
   answer; the Coverage line under the sensor panel with the texts of `contracts/cli.md` (research R15)
-- [ ] T016 [US1] `src/mufuse/acquisition/contact.py`: remove `ContactTracker` and `HOLD_S`; `grade_window`,
+- [X] T016 [US1] `src/mufuse/acquisition/contact.py`: remove `ContactTracker` and `HOLD_S`; `grade_window`,
   `mains_share`, `Reading`, `SensorView` and `tip` stay. Remove the tracker tests from `tests/unit/test_contact.py`
   (T010 covers the hold now)
 
