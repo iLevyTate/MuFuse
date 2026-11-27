@@ -298,7 +298,9 @@ and the number found, and states pass or fail against 90%.
   is reported as a fail and the spec is revisited; the limit is not lowered quietly.
 - **Labels**: in the labelled session a cue is the label. An event counts as found when a mark starts within 2 seconds
   after its cue. Cues are at least 3 seconds apart, so a mark belongs to one cue only. The score report states the
-  allowed time.
+  allowed time. Tension and movement are judged once per stretch, so their marks begin on a stretch edge: for them a
+  mark counts when it starts in the stretch that contains the cue or up to 2 seconds after the cue. A mark that began
+  before that stretch does not count.
 - **Public set**: recordings from a Muse 2, which has the same four sensor sites, with cued blinks and jaw clenches
   (`docs/research/2026-11-26-prior-art-and-datasets-survey.md`, section 3.2). Head turns are scored on the user's own
   session only, because the public set is not relied on for motion data.
