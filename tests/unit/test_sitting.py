@@ -40,6 +40,7 @@ from mufuse.sitting import (
     last_release,
     main,
     new_session,
+    os_name,
     plan,
     read_rows,
     rejudge,
@@ -593,6 +594,21 @@ def test_the_versions_name_the_operating_system_in_plain_words() -> None:
     assert set(made) == {"mufuse", "brainflow", "commit", "os"}
     assert made["os"]
     assert all(part.replace(".", "").isalnum() for part in made["os"].split())
+
+
+@pytest.mark.parametrize(
+    ("system", "release", "named"),
+    [
+        ("Windows", "11", "Windows 11"),
+        ("Linux", "6.8.0-1017-azure", "Linux 6.8.0"),  # the kernel's build name is left out
+        ("Darwin", "24.1.0", "Darwin 24.1.0"),
+        ("Linux", "", "Linux"),
+    ],
+)
+def test_the_operating_system_is_named_without_its_build(
+    system: str, release: str, named: str
+) -> None:
+    assert os_name(system, release) == named
 
 
 def test_a_torn_line_in_the_results_file_is_skipped(tmp_path: Path) -> None:

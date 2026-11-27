@@ -241,8 +241,18 @@ def versions(repo: Path) -> dict[str, str | None]:
         "mufuse": version("mufuse"),
         "brainflow": version("brainflow"),
         "commit": commit,
-        "os": f"{platform.system()} {platform.release()}",
+        "os": os_name(platform.system(), platform.release()),
     }
+
+
+def os_name(system: str, release: str) -> str:
+    """The operating system as it goes into the report: "Windows 11", "Linux 6.8.0".
+
+    Only the leading version number of the release is kept. A Linux release also carries the
+    kernel's build name ("6.8.0-1017-azure"), which says nothing about a verdict.
+    """
+    number = re.match(r"\d+(?:\.\d+)*", release)
+    return f"{system} {number.group()}" if number else system
 
 
 _RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")  # it names a folder
