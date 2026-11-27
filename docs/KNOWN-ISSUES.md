@@ -72,3 +72,32 @@ uv run python scripts/hw_acceptance.py P0 H8
 ```
 
 Then close issue #12 and remove this entry.
+
+## Signal-quality limits are not tuned yet
+
+**Status:** open since 2026-11-27 (feature 002). The quality rules (`specs/002-signal-quality/
+contracts/quality-rules.md`, rules version 1) work end to end and pass on the simulator, but the
+limits marked *tuned* (blink limit 4 robust spreads and 15 µV, tension 10 µV, gyroscope 20 deg/s,
+accelerometer 0.05 g) are starting values. They are set on real data next (task T055) and then
+frozen before the gate sitting.
+
+### What was measured
+
+| Data | Blinks found | Jaw clenches found | Target |
+|---|---|---|---|
+| Simulator, rehearsed labelled session | 20 of 20 | 20 of 20 | 90% |
+| Public Muse 2 set (Lee and Ahn), forehead sensors only | 367 of 520 (70.6%) | 118 of 520 (22.7%) | 90% |
+
+- On the Muse 2 set a jaw clench raises the forehead tension level to about 4.4 µV (rest 2.3),
+  under the 10 µV limit. The ear sensors see it clearly (about 12 µV), but nothing may depend on
+  them while their contact is unreliable (above).
+- After a large blink the 1-10 Hz filter swings back about 0.7 s later. The 0.8 s rule keeps
+  that from counting as a second blink, with little margin (research R5).
+
+### How to work until it is tuned
+
+- Contact and coverage are ready to use. Blink counts, muscle activity and head movement are
+  shown, but read them as provisional.
+- The headband sitting (`uv run mufuse quality label --source athena`) gives the data the
+  limits are tuned on. A later sitting, after the limits are frozen, is the gate.
+

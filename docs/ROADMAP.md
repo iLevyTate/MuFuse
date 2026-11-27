@@ -6,13 +6,17 @@ Rules: `.specify/memory/constitution.md`. Evidence: `reports/Muse EEG self aware
 Experience design: `docs/design/2026-11-26-companion-experience.md`.
 Rows are in build order; feature numbers are names and do not change when the order does.
 
+**This repository is the research rig (2026-11-27).** It holds Phase 0: acquisition, signal
+quality and the signal research. Phases 1 and 2 (the app) stay planned here and may move to a
+repository of their own later, built on this one; that split is not made yet.
+
 ## Phase 0: Desktop research rig (Python, Alienware)
 
 | # | Feature | Delivers | Quality gate |
 |---|---|---|---|
 | 000 | **Foundation** | uv project, ruff/pyright/pytest, pre-commit, GitHub Actions CI, `mufuse` package skeleton | CI green on an empty pipeline |
 | 001 | **Acquisition & recording** | `HeadbandSource` interface (BrainFlow Athena + synthetic + file playback), all 3 presets (EEG/IMU/optics), auto-reconnect, session recording to disk with event markers, CLI `mufuse devices / stream / record` | Synthetic-board tests in CI; manual hardware test: 10-min recording with < 0.5% dropped samples |
-| 002 | **Signal quality** | Per-channel contact, blink/EOG, EMG (jaw) index, IMU motion gate, live quality panel | Labelled artifact test set (blinks, clenches, head turns) detected ≥ 90% |
+| 002 | **Signal quality** (built 2026-11-27 and passing on the simulator; limits to tune, gate open) | Per-channel contact, blink/EOG, EMG (jaw) index, IMU motion gate, live quality panel | Labelled artifact test set (blinks, clenches, head turns) detected ≥ 90% |
 | 003 | **EEG + PPG features** | Filters, Welch PSD, periodic alpha + aperiodic exponent (fooof), blink rate, HR/RMSSD from optics, rolling personal baseline + z-scores | Reference outputs frozen as golden files; PPG HR within ±3 bpm of a chest strap/phone reference |
 | 005 | **Labelling loop** | Event markers (hotkey now, BLE ring later), experience-sampling scheduler with ≥ 30% random prompts, one-tap categories, SQLite store; `mufuse serve` (local API, this PC only) and the Flutter desk strip that shows quality, "now against baseline" and the check-in (may become two specs) | 1 week of real use: ≥ 70% prompt compliance, labels stored separately by source |
 | 006 | **Observations + interpreter plug-ins** | Observation layer (neutral deviations), YAML plug-in manifests, shadow mode, opt-in early feedback tagged "speculative · unproven for you", hit-rate vs random base rate, promotion/demotion | First interpreter ("attention drift") evaluated in shadow mode against random probes |

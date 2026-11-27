@@ -305,10 +305,10 @@ the number found, and pass or fail against 90%.
   `specs/002-signal-quality/research.md` (R13); no recording, path or device name goes into any committed file
 - [ ] T056 Freeze rules v1 in one commit: `src/mufuse/quality/rules.py`, `contracts/quality-rules.md` (the word
   *tuned* removed), and `tests/data/quality_reference/` regenerated with `scripts/make_quality_reference.py`
-- [ ] T057 [P] Docs: `README.md` (quality block, `inspect` summary, `mufuse quality`), `docs/ROADMAP.md` (002
+- [X] T057 [P] Docs: `README.md` (quality block, `inspect` summary, `mufuse quality`), `docs/ROADMAP.md` (002
   status), `docs/KNOWN-ISSUES.md` (what 002 shows while the ear sensors are out), `CLAUDE.md` (architecture and
   commands)
-- [ ] T058 [P] `tests/hardware/README.md`: the 002 sitting (what to have ready, the command, what passes, what
+- [X] T058 [P] `tests/hardware/README.md`: the 002 sitting (what to have ready, the command, what passes, what
   goes into the pull request and what never does)
 - [ ] T059 Full check: `uv run ruff format`, `uv run ruff check`, `uv run pyright`, `uv run pytest -m "not
   hardware"` in under 2 minutes with coverage at 80% or above (SC-010); fix what it shows in `src/mufuse/quality/`

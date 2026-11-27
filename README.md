@@ -26,20 +26,30 @@
 - Not a mental-state labeller. It never tells you "you are anxious".
 - Not a medical device, diagnosis or therapy, and not a replacement for professional care.
 
+## This repository: the research rig
+
+This repository is the **research rig**: it proves that the headband connects, that its signals
+can be recorded and trusted, and it is where the signal research happens. The companion app
+(desk strip, chat, phone) stays planned in [`docs/ROADMAP.md`](docs/ROADMAP.md); it may move to a
+repository of its own later, built on this one. Nothing of those plans is dropped.
+
 ## Status
 
 **001 acquisition** is shipped: connect, stream, auto-reconnect, crash-safe recording with
-markers.
+markers. **002 signal quality** is built and tested on the simulator; its limits still have to
+be tuned and checked on the headband (`docs/KNOWN-ISSUES.md`).
 
 | Command | What it does |
 |---|---|
 | `mufuse devices` | Scan for nearby Muse headbands |
-| `mufuse stream` | Live signal view (`--source sim` works without a headband) |
+| `mufuse stream` | Live signal view with contact, coverage, blinks, muscle activity and head movement (`--source sim` works without a headband) |
 | `mufuse record` | Record a session with keyboard markers |
-| `mufuse inspect` | Summarize a recorded session |
+| `mufuse inspect` | Summarize a recorded session, ending with its signal quality |
+| `mufuse quality label` | Record the guided 9.5-minute labelled session (cued blinks, jaw clenches, head turns, sensor lifts) and score it |
+| `mufuse quality score` | Score a labelled recording, or the public Muse 2 set with `--public DIR` |
 
-Next up: signal quality, EEG and heart-rate features, experimental fNIRS, then the labelling loop.
-See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+Next up: tune and freeze the quality limits, then EEG and heart-rate features, the labelling
+loop, experimental fNIRS. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 - Rules: [`.specify/memory/constitution.md`](.specify/memory/constitution.md)
 - Brand: [`docs/BRAND.md`](docs/BRAND.md)

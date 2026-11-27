@@ -168,3 +168,42 @@ the live channel check, for example a noisy threshold at the geometric midpoint 
 at rest and the spread with the jaw clenched, or "not separable" when the two overlap. They are
 suggestions only. Nothing in a run changes `src/mufuse/acquisition/signal_check.py`: that is tuned
 in feature 002, in a reviewed commit that cites the run id and is checked with `--rejudge`.
+
+# Hardware sitting: 002 signal quality
+
+One guided session of 9.5 minutes, from one command. The Muse app must be closed.
+
+```
+uv run mufuse quality label --source athena
+```
+
+The screen tells you each step and counts it ("Blink 7 of 20"):
+
+| Time | Block |
+|---|---|
+| 0:00 | Settle: sit still, check the sensor panel |
+| 0:20 | Sit still, eyes open (1 minute) |
+| 1:20 | Sit still, eyes closed until the bell (1 minute) |
+| 2:30 | 20 blinks, one at each cue |
+| 4:00 | 20 jaw clenches of about 1 s |
+| 5:50 | 20 head turns, to one side and back |
+| 7:40 | 10 lifts of a forehead sensor (AF7, AF8 in turn) for 5 s each |
+| 9:25 | Done: it saves, scores and checks that replaying the recording gives the same answers |
+
+The recording goes to `recordings/` (never committed). To score it again later, or after the
+limits change:
+
+```
+uv run mufuse quality score recordings/<session>
+uv run mufuse inspect recordings/<session>
+```
+
+Rehearse it first without the headband (the simulator follows every cue; it takes the same
+9.5 minutes):
+
+```
+uv run mufuse quality label --source sim --out <a scratch folder>
+```
+
+The ear sensors are not needed: everything in this session reads AF7, AF8 and the motion sensors.
+

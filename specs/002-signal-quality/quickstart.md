@@ -9,7 +9,7 @@ uv run mufuse stream --source sim          # quality block under the sensor pane
 uv run mufuse record --source sim --duration 30 --out /tmp/q
 uv run mufuse inspect /tmp/q/<session>     # ends with "Signal quality (rules 1)"
 uv run mufuse quality label --source sim --out /tmp/q   # scripted wearer follows the cues; 9.5 min, real time
-uv run mufuse quality score /tmp/q/<session>            # the same report again, exit code 0
+uv run mufuse quality score /tmp/q/<session>            # the report again (replay: not checked), exit 0
 ```
 
 Expected: the tests pass in under 2 minutes with coverage at 80% or above; the rehearsed session scores 20 of 20
@@ -26,14 +26,18 @@ uv run python scripts/fetch_muse2_set.py            # 400 MB, to the user cache 
 uv run mufuse quality score --public <printed folder>
 ```
 
+On 2026-11-27 the scripted download worked and the checksum matched. Rules v1 as drafted scored 70.6% of the
+blinks and 22.7% of the jaw clenches there (research R12); the clench task is inferred from the data.
+
 If the download is refused, fetch `sourcedata.zip` in a browser from
 https://doi.org/10.6084/m9.figshare.30162868.v1 and run `scripts/fetch_muse2_set.py --from <file>`. The set is
 CC BY 4.0 (Lee and Ahn) and never enters the repo.
 
 ## Headband sitting (SC-001, SC-002, SC-004, and SC-005 on the device)
 
-One sitting of about 10 minutes, after the limits are frozen as rules v1. Headband on and awake, phone Muse app
-closed, in the user's own PowerShell window:
+Two sittings of about 10 minutes each. The first, now, records the data the limits are tuned on (T055); its score
+is information, not the gate. The second, after the limits are frozen as rules v1 (T056), is the gate (T061).
+Headband on and awake, phone Muse app closed, in the user's own PowerShell window:
 
 ```powershell
 uv run mufuse quality label --source athena
