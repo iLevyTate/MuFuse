@@ -32,6 +32,15 @@ from mufuse.guide import Guide, guide_from_env
 from mufuse.keys import KeyPoller
 from mufuse.live_view import YELLOW, LiveStats, Screen, render
 from mufuse.quality.engine import judge
+from mufuse.quality.labelled import (
+    RUN_S,
+    ScoreReport,
+    cues_from_markers,
+    labelled_guide,
+    rehearsal_wearer,
+    report_lines,
+    score,
+)
 from mufuse.quality.summary import summarize, summary_lines
 from mufuse.recording.format import Marker
 from mufuse.recording.reader import load_session
@@ -207,8 +216,10 @@ def _run(
     sleep: Callable[[float], None] = time.sleep,
     read_key: Callable[[], str | None] = _read_key,
     stats: LiveStats | None = None,
+    guide: Guide | None = None,
 ) -> None:
-    """`stats`, when given, keeps what the live view judged (for the replay check)."""
+    """`stats`, when given, keeps what the live view judged (for the replay check); `guide`
+    replaces the one a launcher hands over in MUFUSE_GUIDE."""
     sup = StreamSupervisor(factory, clock=clock)
     with _stop_on_ctrl_c() as stop:
         if attempt.slow:
@@ -237,7 +248,7 @@ def _run(
             console.print(f"! {warning}", style=YELLOW)
         try:
             _show_and_record(
-                sup, timer, duration, writer_factory, stop, clock, sleep, read_key, stats
+                sup, timer, duration, writer_factory, stop, clock, sleep, read_key, stats, guide
             )
         except OSError as exc:
             console.print(f"[red]Write error: {exc}[/red]")
@@ -262,6 +273,7 @@ def _show_and_record(
     sleep: Callable[[float], None],
     read_key: Callable[[], str | None],
     stats: LiveStats | None = None,
+    guide: Guide | None = None,
 ) -> None:
     """The live loop. Whatever ends it, the session is finalized before this returns."""
     assert sup.source is not None
@@ -271,7 +283,7 @@ def _show_and_record(
             sup.on_gap_closed = writer.add_gap
             sup.on_reconnect_step = writer.add_reconnect_step
         recording = writer.session_dir.name if writer else None
-        guide = guide_from_env()
+        guide = guide or guide_from_env()
         stats = LiveStats(clock) if stats is None else stats
         open_blocks, markers = set[str](), 0
         latest: list[Screen] = [render(sup, stats, recording)]
@@ -307,6 +319,8 @@ def _show_and_record(
                     for label, offset in guide.due(now - started) if guide else []:
                         t = started + offset
                         writer.add_marker(Marker(t=t, kind="system", label=label, source="system"))
+                if guide is not None and guide.bells(now - started):
+                    console.bell()
                 key = read_key()
                 if key == "q":
                     break
@@ -456,3 +470,98 @@ def inspect(path: Path) -> None:
         return
     for line in summary_lines(quality):
         console.print(line, markup=False, highlight=False)
+
+
+# mufuse quality ------------------------------------------------------------------------------
+
+quality_app = typer.Typer(no_args_is_help=True, help="Signal quality: labelled session and score.")
+app.add_typer(quality_app, name="quality")
+
+
+def _label(
+    attempt: _Attempt,
+    factory: Callable[[], HeadbandSource],
+    read_key: Callable[[], str | None],
+    out: Path,
+    *,
+    clock: Callable[[], float] = time.time,
+    sleep: Callable[[float], None] = time.sleep,
+) -> tuple[int, ScoreReport | None, Path | None]:
+    """Record the labelled session, then score it and check the replay. Returns the exit code,
+    the report (None when it was stopped early) and the session folder."""
+    folder: list[Path] = []
+
+    def writer(src: HeadbandSource) -> SessionWriter:
+        w = SessionWriter.create(
+            out, src.device, src.streams, notes="labelled session", clock=clock
+        )
+        folder.append(w.session_dir)
+        return w
+
+    stats = LiveStats(clock)
+    _run(
+        attempt,
+        factory,
+        RUN_S,
+        writer,
+        clock=clock,
+        sleep=sleep,
+        read_key=read_key,
+        stats=stats,
+        guide=labelled_guide(),
+    )
+    session = load_session(folder[0])
+    cues = cues_from_markers(session.markers)
+    if not any(c.kind == "end" for c in cues):
+        console.print("Stopped before the end: the session is saved, but not scored.")
+        return EXIT_INTERRUPTED, None, folder[0]
+    quality = judge(session)
+    replay = stats.answers == quality.answers and stats.blinks == quality.blinks
+    report = score(quality, cues, replay=replay)
+    for line in report_lines(report):
+        console.print(line, markup=False, highlight=False)
+    return 0, report, folder[0]
+
+
+@quality_app.command("label")
+def quality_label(
+    source: Annotated[
+        SourceKind, typer.Option(help="athena = headband, sim = a simulated wearer who follows")
+    ] = SourceKind.athena,
+    device: DeviceOpt = None,
+    out: Annotated[Path, typer.Option(help="Recordings folder")] = Path("recordings"),
+) -> None:
+    """Record the guided labelled session (about 9.5 minutes), then score it."""
+    if source is SourceKind.play:
+        console.print("[red]A labelled session is recorded live: use --source athena or sim[/red]")
+        raise typer.Exit(EXIT_BAD_ARGS)
+    attempt = _Attempt.begin("quality label", source, DEFAULT_PRESET)
+    if source is SourceKind.sim:
+        from mufuse.acquisition.simulated import Rehearsal
+
+        rehearsal = Rehearsal(rehearsal_wearer())
+        factory: Callable[[], HeadbandSource] = rehearsal.source
+        read_key = lambda: rehearsal.read_key() or _read_key()  # noqa: E731
+    else:
+        factory, read_key = _source_factory(source, device, DEFAULT_PRESET, None)
+    with _KEYS:
+        code, _, _ = _label(attempt, factory, read_key, out)
+    raise typer.Exit(code)
+
+
+@quality_app.command("score")
+def quality_score(path: Path) -> None:
+    """Score a recorded labelled session against its cues."""
+    try:
+        session = load_session(path)
+    except (OSError, ValueError, KeyError) as exc:
+        console.print(f"[red]Cannot read session: {exc}[/red]")
+        raise typer.Exit(EXIT_UNREADABLE) from exc
+    cues = cues_from_markers(session.markers)
+    if not cues:
+        console.print("This session holds no cue markers: it is not a labelled session.")
+        raise typer.Exit(EXIT_BAD_ARGS)
+    report = score(judge(session), cues)
+    for line in report_lines(report):
+        console.print(line, markup=False, highlight=False)
+    raise typer.Exit(0 if report.passed else 1)

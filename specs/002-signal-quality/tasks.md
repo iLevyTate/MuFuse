@@ -251,39 +251,39 @@ the number found, and pass or fail against 90%.
 
 ### Tests first: labelled session and scorer
 
-- [ ] T043 [P] [US5] Tests in `tests/unit/test_quality_labelled.py` for `contracts/labelled-session.md`: the
+- [X] T043 [P] [US5] Tests in `tests/unit/test_quality_labelled.py` for `contracts/labelled-session.md`: the
   schedule (times, counts, labels, `q:end` at 565 s); a cue becomes a marker label and back; each scoring rule
   (a blink counts for one cue only; a span that began before the cue's stretch does not count; quiet shares and
   "not scored" above 10% left out; false marks; the lift rule); a kind with no cues is "not scored"; the pass
   limits; the report layout of `contracts/cli.md`; the report holds no path and no device name
-- [ ] T044 [P] [US5] Test in `tests/integration/test_quality_gate.py`: the rehearsed labelled session on
+- [X] T044 [P] [US5] Test in `tests/integration/test_quality_gate.py`: the rehearsed labelled session on
   `FakeClock`: cues land in `markers.jsonl`, the score is 20 of 20 for each kind and 10 of 10 lifts, the replay is
   identical to live, the result is a pass; it runs in seconds
-- [ ] T045 [P] [US5] Tests in `tests/integration/test_quality_cli.py` (extend) for the exit codes of
+- [X] T045 [P] [US5] Tests in `tests/integration/test_quality_cli.py` (extend) for the exit codes of
   `contracts/cli.md`: `quality score PATH` 0, 1, 2, 6; `quality label` 0 whatever the score, 4, 5, and 130 with the
   recording finalized after Ctrl+C
-- [ ] T046 [P] [US5] Add the cue texts and the score report texts to `tests/unit/test_quality_wording.py`
-- [ ] T047 [P] [US5] Tests in `tests/unit/test_fetch_muse2_set.py`, with no network: `--from FILE` with a wrong
+- [X] T046 [P] [US5] Add the cue texts and the score report texts to `tests/unit/test_quality_wording.py`
+- [X] T047 [P] [US5] Tests in `tests/unit/test_fetch_muse2_set.py`, with no network: `--from FILE` with a wrong
   checksum exits 1; a right one is unpacked into `--dest`; an archive entry that would leave the destination is
   refused; a refused download exits 1 and prints the browser steps of `quickstart.md`
 
 ### Implementation: labelled session and scorer
 
-- [ ] T048 [US5] `src/mufuse/quality/labelled.py`: the cue schedule, the `Guide` built from it (cues are written
+- [X] T048 [US5] `src/mufuse/quality/labelled.py`: the cue schedule, the `Guide` built from it (cues are written
   through the existing `Cue.marker` of `guide.py`), reading cues back from a session's markers, and the scripted
   `Wearer` of the rehearsal with a reaction time (research R14). Fields per `data-model.md`: `Cue.t`, `Cue.kind`,
   `Cue.sensor`
-- [ ] T049 [US5] `src/mufuse/quality/labelled.py`: the scorer and `ScoreReport`. Fields per `data-model.md`:
+- [X] T049 [US5] `src/mufuse/quality/labelled.py`: the scorer and `ScoreReport`. Fields per `data-model.md`:
   `ScoreReport.rules`, `ScoreReport.allowed_s`, the per-kind found, total and pass, the quiet values, the lifts,
   `ScoreReport.replay_identical`, the overall pass
-- [ ] T050 [US5] `src/mufuse/cli.py`: the group `mufuse quality` with `label [--source] [--device] [--out]` and
+- [X] T050 [US5] `src/mufuse/cli.py`: the group `mufuse quality` with `label [--source] [--device] [--out]` and
   `score PATH`; `label` ends with the score report and the replay check
-- [ ] T051 [P] [US5] `scripts/fetch_muse2_set.py [--dest DIR] [--from FILE]`: download or take a file, check the
+- [X] T051 [P] [US5] `scripts/fetch_muse2_set.py [--dest DIR] [--from FILE]`: download or take a file, check the
   MD5 of research R12, unpack outside the repo, print the folder. The package itself gets no network code
 
 ### Public set (second score, SC-003)
 
-- [ ] T052 [US5] Get the set with `uv run python scripts/fetch_muse2_set.py`. **(you, only if the download is
+- [X] T052 [US5] Get the set with `uv run python scripts/fetch_muse2_set.py`. **(you, only if the download is
   refused)**: download `sourcedata.zip` in a browser and run `scripts/fetch_muse2_set.py --from <file>`. The set
   is untrusted data and never enters the repo
 - [ ] T053 [US5] Tests in `tests/unit/test_quality_public_set.py`, on a tiny folder the test builds in the layout

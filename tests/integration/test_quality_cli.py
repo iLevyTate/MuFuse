@@ -19,6 +19,7 @@ from mufuse.cli import (
     _run,  # pyright: ignore[reportPrivateUsage]
     app,
 )
+from mufuse.recording.format import Marker
 from mufuse.recording.writer import SessionWriter
 from tests.conftest import QUICK, FakeClock, rehearse
 
@@ -114,4 +115,38 @@ def test_inspect_of_a_session_without_samples_says_not_available(
 
 def test_inspect_keeps_its_exit_code_for_an_unreadable_session(tmp_path: Path) -> None:
     shown = CliRunner().invoke(app, ["inspect", str(tmp_path / "missing")])
+    assert shown.exit_code == EXIT_UNREADABLE
+
+
+# mufuse quality score -----------------------------------------------------------------------
+
+
+def test_score_without_cue_markers_exits_2(tmp_path: Path, clock: FakeClock) -> None:
+    session = _recorded(tmp_path, clock, QUICK)
+    shown = CliRunner().invoke(app, ["quality", "score", str(session)])
+    assert shown.exit_code == 2, shown.output
+    assert "no cue markers" in shown.output
+
+
+def test_score_that_misses_the_gate_exits_1(tmp_path: Path, clock: FakeClock) -> None:
+    writer = SessionWriter.create(
+        tmp_path, DeviceInfo("SimulatedAthena", "p1041", "simulated"), ATHENA_STREAMS, clock=clock
+    )
+    reads = rehearse(QUICK, clock, 20.0)
+    first = next(c.timestamps[0] for read in reads for c in read if c.n_samples)
+    for read in reads:
+        writer.write(read)
+    for at in (8.0, 12.0, 16.0):  # blink cues that nobody followed
+        writer.add_marker(
+            Marker(t=float(first) + at, kind="system", label="q:blink", source="system")
+        )
+    writer.finalize()
+    shown = CliRunner().invoke(app, ["quality", "score", str(writer.session_dir)])
+    assert shown.exit_code == 1, shown.output
+    assert "blinks        0 of 3   fail" in shown.output
+    assert "RESULT        fail" in shown.output
+
+
+def test_score_of_an_unreadable_session_exits_6(tmp_path: Path) -> None:
+    shown = CliRunner().invoke(app, ["quality", "score", str(tmp_path / "missing")])
     assert shown.exit_code == EXIT_UNREADABLE

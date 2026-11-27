@@ -97,3 +97,10 @@ def test_current_gives_the_bare_instruction_and_the_seconds_left_in_it() -> None
     )  # no ">>" or "now": the view says NOW
     assert guide.current(60.0) == ("Done, stopping", 0.0)
     assert Guide(cues=(Cue(5, "Later"),), duration=10).current(1.0) == ("Starting", 4.0)
+
+
+def test_a_cue_can_ring_the_bell_once() -> None:
+    guide = Guide(cues=(Cue(0, "Eyes closed"), Cue(10, "Open your eyes", bell=True)), duration=20)
+    assert guide.bells(9.9) == 0
+    assert guide.bells(10.0) == 1
+    assert guide.bells(15.0) == 0  # once

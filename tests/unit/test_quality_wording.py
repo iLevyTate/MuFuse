@@ -29,6 +29,13 @@ from mufuse.quality.answer import (
     QualityAnswer,
     SessionQuality,
 )
+from mufuse.quality.labelled import (
+    KindScore,
+    QuietScore,
+    ScoreReport,
+    labelled_guide,
+    report_lines,
+)
 from mufuse.quality.rules import RULES_VERSION
 from mufuse.quality.summary import summarize, summary_lines
 
@@ -121,6 +128,21 @@ def _summaries() -> list[list[str]]:
     return [summary_lines(summarize(full)), summary_lines(summarize(empty))]
 
 
+def _reports() -> list[ScoreReport]:
+    passed = KindScore(20, 20, True)
+    return [
+        ScoreReport(
+            RULES_VERSION, 2.0, passed, passed, passed,
+            QuietScore(0.018, 0.0, 0.0, 2, True), KindScore(10, 10, True), True,
+        ),
+        ScoreReport(
+            RULES_VERSION, 2.0, KindScore(17, 20, False), KindScore(0, 0, None), passed,
+            QuietScore(None, None, None, 0, None, "more than 10% of the quiet stretches"),
+            KindScore(8, 10, False), False,
+        ),
+    ]  # fmt: skip
+
+
 def _texts() -> list[str]:
     texts = [NO_SENSOR, *COVERAGE_WORDS.values(), *SIGNAL_TEXTS.values()]
     texts += [template.format(name=n) for template in SENSOR_TEXTS.values() for n in SENSORS]
@@ -129,6 +151,9 @@ def _texts() -> list[str]:
         texts.append(screen.status_line())
     for lines in _summaries():
         texts += lines
+    texts += [cue.text for cue in labelled_guide().cues]
+    for report in _reports():
+        texts += report_lines(report)
     return texts
 
 
