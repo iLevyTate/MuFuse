@@ -1,6 +1,7 @@
 # MuFuse companion experience: design (2026-11-26)
 
-**Status:** draft for review. Nothing in this document is built yet.
+**Status:** approved by the owner on 2026-11-26, including the four decisions at the end.
+Nothing in this document is built yet.
 **Rules:** `.specify/memory/constitution.md`. **Evidence:** `reports/Muse EEG self awareness research.md`.
 
 ## Goal
@@ -125,7 +126,7 @@ its count, its effect and the word "hypothesis". This is feature 008.
 - A settings page lists what it has learned, each pattern's hit rate, and every preference.
   Each one can be undone.
 
-## Early feedback (needs a decision)
+## Early feedback
 
 The request is that MuFuse starts talking early and gets refined later, even before it is accurate.
 The constitution (principle V) keeps a new pattern silent until it beats chance on your own data.
@@ -133,12 +134,10 @@ The constitution (principle V) keeps a new pattern silent until it beats chance 
 Most of the request needs no rule change: descriptions, check-ins and "what are you seeing?" are
 allowed from day one. Only personal-pattern statements are held back.
 
-**Proposed amendment to principle V:** patterns stay silent by default. You may switch on early
+**Amendment to principle V (constitution 1.1.0):** patterns stay silent by default. You may switch on early
 feedback, and then unproven patterns are shown with the tag "speculative · unproven for you".
 Hit rates are still tracked. A pattern loses the tag only after it beats chance. Principle II
 (describe, don't label) still applies in full.
-
-Until this is approved, the design follows principle V as written.
 
 ## Architecture
 
@@ -208,13 +207,13 @@ Each step is one Spec Kit feature on its own branch.
 | 7 | 009 breathing | A guided breathing exercise with live HRV |
 | 8 | 008 review page | Timeline and weekly patterns |
 
-## Open decisions
+## Decisions (2026-11-26)
 
-1. **Early feedback:** approve the amendment to principle V, or keep patterns silent until proven.
-2. **Roadmap order:** move fNIRS (004) after step 5, since no goal above depends on it, and bring
-   the Flutter strip forward into step 4.
-3. **Default check-in answers:** the list above, or your own.
-4. **Craving cue exercise:** keep as a later note; it is not on the roadmap.
+1. **Early feedback:** approved. Principle V is amended in constitution 1.1.0.
+2. **Roadmap order:** fNIRS (004) moves after step 5, since no goal above depends on it, and the
+   Flutter strip comes forward into step 4. `docs/ROADMAP.md` is updated.
+3. **Default check-in answers:** the list above. It stays editable.
+4. **Craving cue exercise:** a later note in the roadmap, not a feature yet.
 
 ## Not in this design
 

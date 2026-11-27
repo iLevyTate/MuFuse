@@ -1,13 +1,16 @@
 <!--
 Sync Impact Report
-- Version change: template → 1.0.0 (initial ratification)
-- Principles added: I–IX (all new)
-- Sections added: Signal & Platform Constraints; Development Workflow & Quality Gates; Governance
-- Removed sections: none
+- Version change: 1.0.0 → 1.1.0 (MINOR: Principle V materially expanded)
+- Principles changed: V gains opt-in early feedback. An interpreter still in shadow mode may
+  be surfaced when the user switches early feedback on, always tagged as unproven.
+- Rationale: the user wants the companion to speak early and be refined in use. Descriptions
+  and check-ins were already allowed; only interpretations were held back. Default behaviour,
+  hit-rate tracking and the random-prompt share are unchanged.
+- Sections added or removed: none
 - Templates requiring updates: none (plan/spec/tasks templates read this file at runtime)
-- Deferred TODOs: none
-- Sources: docs/research/2026-11-25-stack-review.md;
-  reports/Muse EEG self awareness research.md
+- Specs affected: none yet (001 has no interpreters); 006 and 007 must implement the tag.
+- Sources: docs/design/2026-11-26-companion-experience.md
+- Earlier: template → 1.0.0 (2026-11-25, initial ratification, Principles I–IX)
 -->
 # MuFuse Constitution
 
@@ -60,6 +63,11 @@ labels create nocebo effects and probe-wording bias.
   when they beat the random-prompt base rate on the user's own data; they are demoted when
   they stop doing so. Self-initiated labels (ring presses) are stored separately and never
   pooled with random-probe labels for hit-rate computation.
+- Early feedback is opt-in. The user MAY switch it on, for one interpreter or for all; an
+  interpreter in shadow mode is then surfaced, and every statement it makes MUST carry the
+  tag "speculative · unproven for you". Early feedback MUST be off by default and MUST be
+  switchable off in one action. It MUST NOT change hit-rate tracking or the random-prompt
+  share, and it never relaxes Principles II, III or IV. Only promotion removes the tag.
 
 ### VI. Two-Speed Loop
 - Fast loop (< 1 s): deterministic features + rules → non-verbal cue (haptic/tone). The LLM
@@ -119,4 +127,4 @@ labels create nocebo effects and probe-wording bias.
 - Reviews and `/speckit-analyze` runs MUST verify compliance; violations require an explicit,
   documented justification in the plan's Complexity Tracking section.
 
-**Version**: 1.0.0 | **Ratified**: 2026-11-25 | **Last Amended**: 2026-11-25
+**Version**: 1.1.0 | **Ratified**: 2026-11-25 | **Last Amended**: 2026-11-26
