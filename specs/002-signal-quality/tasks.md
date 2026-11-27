@@ -286,10 +286,10 @@ the number found, and pass or fail against 90%.
 - [X] T052 [US5] Get the set with `uv run python scripts/fetch_muse2_set.py`. **(you, only if the download is
   refused)**: download `sourcedata.zip` in a browser and run `scripts/fetch_muse2_set.py --from <file>`. The set
   is untrusted data and never enters the repo
-- [ ] T053 [US5] Tests in `tests/unit/test_quality_public_set.py`, on a tiny folder the test builds in the layout
+- [X] T053 [US5] Tests in `tests/unit/test_quality_public_set.py`, on a tiny folder the test builds in the layout
   found in T052: Muse 2 recordings and their cue times are read; a folder that is not the set gives exit code 2;
   cue times that cannot be read give "not scored" with the reason; head turns are not scored
-- [ ] T054 [US5] `src/mufuse/quality/public_set.py` and `mufuse quality score --public DIR` in `src/mufuse/cli.py`.
+- [X] T054 [US5] `src/mufuse/quality/public_set.py` and `mufuse quality score --public DIR` in `src/mufuse/cli.py`.
   If T052 could not be done, the result is "not scored" with the reason, never a pass
 
 **Checkpoint**: `uv run mufuse quality label --source sim --out <dir>` records, scores and passes.

@@ -170,7 +170,7 @@ class ScoreReport:
         return all(p.passed is True for p in parts) and self.replay_identical is not False
 
 
-def _kind(found: int, total: int) -> KindScore:
+def kind_score(found: int, total: int) -> KindScore:
     if total == 0:
         return KindScore(0, 0, None)
     return KindScore(found, total, found >= math.ceil(PASS_SHARE * total - 1e-9))
@@ -188,12 +188,12 @@ def _stretch_start(answers: Sequence[QualityAnswer], t: float) -> float:
     return t
 
 
-def _span_found(answers: Sequence[QualityAnswer], spans: Sequence[Span], cue: float) -> bool:
+def span_found(answers: Sequence[QualityAnswer], spans: Sequence[Span], cue: float) -> bool:
     first = _stretch_start(answers, cue)
     return any(first - 1e-9 <= s.start <= cue + ALLOWED_S + 1e-9 for s in spans)
 
 
-def _blinks_found(quality: SessionQuality, cues: Sequence[float]) -> int:
+def blinks_found(quality: SessionQuality, cues: Sequence[float]) -> int:
     used: set[int] = set()
     found = 0
     for cue in cues:
@@ -282,17 +282,17 @@ def score(
     return ScoreReport(
         rules=quality.rules or RULES_VERSION,
         allowed_s=ALLOWED_S,
-        blinks=_kind(_blinks_found(quality, times["blink"]), len(times["blink"])),
-        clenches=_kind(
-            sum(_span_found(answers, quality.tension_spans, t) for t in times["clench"]),
+        blinks=kind_score(blinks_found(quality, times["blink"]), len(times["blink"])),
+        clenches=kind_score(
+            sum(span_found(answers, quality.tension_spans, t) for t in times["clench"]),
             len(times["clench"]),
         ),
-        turns=_kind(
-            sum(_span_found(answers, quality.movement_spans, t) for t in times["turn"]),
+        turns=kind_score(
+            sum(span_found(answers, quality.movement_spans, t) for t in times["turn"]),
             len(times["turn"]),
         ),
         quiet=_quiet(quality, cues),
-        lifts=_kind(passed_lifts, len(lifts)),
+        lifts=kind_score(passed_lifts, len(lifts)),
         replay_identical=replay,
     )
 

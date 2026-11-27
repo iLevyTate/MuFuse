@@ -550,8 +550,27 @@ def quality_label(
 
 
 @quality_app.command("score")
-def quality_score(path: Path) -> None:
-    """Score a recorded labelled session against its cues."""
+def quality_score(
+    path: Annotated[Path | None, typer.Argument(help="A labelled session folder")] = None,
+    public: Annotated[
+        Path | None, typer.Option(help="Score the public Muse 2 set in this folder instead")
+    ] = None,
+) -> None:
+    """Score a recorded labelled session against its cues, or the public Muse 2 set."""
+    if public is not None:
+        from mufuse.quality.public_set import NotTheSetError, public_lines, score_public
+
+        try:
+            result = score_public(public)
+        except NotTheSetError as exc:
+            console.print(f"Not the public set: {exc}", markup=False, highlight=False)
+            raise typer.Exit(EXIT_BAD_ARGS) from exc
+        for line in public_lines(result):
+            console.print(line, markup=False, highlight=False)
+        raise typer.Exit(0 if result.passed else 1)
+    if path is None:
+        console.print("Give a session folder, or --public DIR.")
+        raise typer.Exit(EXIT_BAD_ARGS)
     try:
         session = load_session(path)
     except (OSError, ValueError, KeyError) as exc:

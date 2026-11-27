@@ -169,6 +169,18 @@ then frozen as rules v1 (see R13). The exact v1 definitions are in `contracts/qu
   with the reason. It is never reported as passed without a score.
 - **Alternatives**: vendoring a sample (forbidden: third-party data stays out of the repo); Zenodo 8429740 (its
   labels are the Muse's own flags); the Kaggle facial-movement set (no licence).
+- **Found when the set was fetched (2026-11-27)**: the scripted download now works (figshare redirects to its
+  storage; the checksum matched). `sourcedata/sub-XX/` holds one EDF+ file per task and device; the Muse 2 files
+  (`…_acq-Muse2_eeg.edf`, 26 subjects for each task used here) carry TP9, AF7, AF8, TP10 at 256 Hz and the cues as
+  annotations on the file's own clock: `…Number_01` task start, twenty `…Number_02` "task performing" beeps 3 s
+  apart, `…Number_03` task end. The README names four tasks, EB, BT, MVO and MVC, without saying which movement
+  each is; the derivatives hold the same events, timed on another device. EB is the eye-blink task. The clench
+  task is inferred from the data: in the second after each beep (subjects 1-7, median) the louder of the ear
+  sensors reads 12.2 µV of tension-band level for BT, 12.1 for MVO, 7.9 for MVC and 6.5 for EB, so BT (or MVO) is
+  jaw muscle work; BT is used. On the forehead alone the same clench reads only 4.4 µV (rest 2.3), against the
+  10 µV tension limit.
+- **First score of rules v1 as drafted (untuned)**: blinks 367 of 520 (70.6%), jaw clenches 118 of 520 (22.7%);
+  SC-003 not met. Both are inputs to the tuning of R13, not a verdict on the gate, which is the Athena session.
 
 ## R13 Where the limits come from
 - **Decision**: the initial limits come from the survey and from the simulator's known amplitudes. In build step 9
