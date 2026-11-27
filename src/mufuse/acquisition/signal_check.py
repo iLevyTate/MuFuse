@@ -18,7 +18,11 @@ ChannelStatus = Literal["flat", "railed", "noisy", "ok"]
 # Starting thresholds — tune against real Athena recordings.
 FLAT_UV = 1.0  # robust spread below this: no real signal
 NOISY_UV = 75.0  # robust spread above this: poor contact / EMG / movement
-RAIL_UV = 1000.0  # |amplitude| above this counts as a saturated sample
+# The Athena's amplifier ends at ±725 µV (official "1.45 mVp-p"; BrainFlow >= 5.23 scales and
+# centres it there). A sample within 2% of that end is saturated. The threshold used to be
+# 1000 µV, which no Athena sample can reach.
+FULL_SCALE_UV = 725.0
+RAIL_UV = 0.98 * FULL_SCALE_UV  # |amplitude| at or above this counts as a saturated sample
 RAIL_FRACTION = 0.10  # share of saturated samples that makes the window "railed"
 
 
@@ -36,12 +40,20 @@ def classify_channel(window_uv: FloatArray) -> ChannelStatus:
     x = x[np.isfinite(x)]
     if x.size == 0:
         return "flat"
-    if np.mean(np.abs(x) > RAIL_UV) > RAIL_FRACTION:
+    if np.mean(np.abs(x) >= RAIL_UV) > RAIL_FRACTION:
         return "railed"
-    # Scaled median absolute deviation: robust spread that brief blinks cannot inflate.
-    spread = 1.4826 * float(np.median(np.abs(x - np.median(x))))
+    spread = spread_uv(x)
     if spread < FLAT_UV:
         return "flat"
     if spread > NOISY_UV:
         return "noisy"
     return "ok"
+
+
+def spread_uv(window_uv: FloatArray) -> float:
+    """Scaled median absolute deviation: a robust spread that brief blinks cannot inflate."""
+    x = np.asarray(window_uv, dtype=np.float64)
+    x = x[np.isfinite(x)]
+    if x.size == 0:
+        return 0.0
+    return 1.4826 * float(np.median(np.abs(x - np.median(x))))

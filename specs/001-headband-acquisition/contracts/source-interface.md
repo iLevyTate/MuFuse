@@ -6,6 +6,10 @@ class HeadbandSource(Protocol):
     def device(self) -> DeviceInfo: ...
     @property
     def streams(self) -> Mapping[StreamKind, StreamSpec]: ...
+    @property
+    def lost_subpackets(
+        self,
+    ) -> Mapping[StreamKind, int]: ...  # lost on the headset link; 0 if none
     def start(self) -> None: ...  # connect + begin streaming; raises SourceError
     def read(
         self,

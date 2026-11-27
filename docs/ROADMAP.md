@@ -23,6 +23,8 @@ Rows are in build order; feature numbers are names and do not change when the or
 
 **Phase 0 exit:** at least one interpreter beats the random-prompt hit rate across ≥ 2 weeks; the fNIRS gate is passed or fNIRS stays flagged experimental.
 
+**Open hardware issue (2026-11-26):** the ear sensors (TP9, TP10) do not hold contact, so 001's P0 and H8 checks are still open and 002 and 003 must work on the forehead sensors alone. See `docs/KNOWN-ISSUES.md`.
+
 ## Phase 1: App (Flutter, desktop + phone)
 010 Dart Athena BLE decoder (matches the Python golden decode) · 011 Dart feature port (matches golden features) · 012 ONNX interpreters · 013 sherpa_onnx speech + on-device LLM · 014 app UX (connect, contact view, timeline, journal; the desk strip and chat arrive earlier, in 005 and 007, on top of the Python engine)
 

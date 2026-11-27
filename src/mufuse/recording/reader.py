@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 from mufuse.acquisition.types import FloatArray, StreamKind
-from mufuse.recording.format import Gap, Marker
+from mufuse.recording.format import Gap, Marker, ReconnectStep
 
 
 @dataclass(frozen=True)
@@ -20,6 +20,7 @@ class LoadedSession:
     streams: dict[StreamKind, tuple[FloatArray, FloatArray]]  # kind -> (timestamps, data)
     markers: list[Marker]
     gaps: list[Gap]
+    reconnects: list[ReconnectStep] = field(default_factory=list[ReconnectStep])
 
     @property
     def finalized(self) -> bool:
@@ -43,6 +44,7 @@ def load_session(path: Path) -> LoadedSession:
         streams=streams,
         markers=[Marker(**r) for r in _read_jsonl(path / "markers.jsonl")],
         gaps=[Gap(**r) for r in _read_jsonl(path / "gaps.jsonl")],
+        reconnects=[ReconnectStep(**r) for r in _read_jsonl(path / "reconnects.jsonl")],
     )
 
 

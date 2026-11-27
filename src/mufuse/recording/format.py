@@ -12,6 +12,7 @@ FORMAT_VERSION = 1
 MarkerKind = Literal["moment", "block_start", "block_end", "system"]
 MarkerSource = Literal["keyboard", "system", "ring"]
 GapReason = Literal["stall", "disconnect", "timestamp_jump"]
+ReconnectWhat = Literal["lost", "released", "attempt", "failed", "connected", "first_sample"]
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,17 @@ class Gap:
     start: float
     end: float | None
     reason: GapReason
+
+
+@dataclass(frozen=True)
+class ReconnectStep:
+    """One step of losing the headband and getting it back, at the recorder's clock time `t`:
+    the signal counted as lost (detail: the gap's reason), the old connection released, an
+    attempt begun, failed (detail: the error) or connected, and the first sample after it."""
+
+    t: float
+    what: ReconnectWhat
+    detail: str | None = None
 
 
 def new_session_id(started_at: float) -> str:

@@ -15,7 +15,7 @@ authors = [
 requires-python = ">=3.13"
 dependencies = [
     "bleak>=3.1.0",
-    "brainflow>=5.22",
+    "brainflow>=5.23",  # 5.23 fixed Athena EEG scaling (1450/16383 µV per count)
     "numpy>=2.5.5",
     "platformdirs>=4.14.8",
     "rich>=15.0.0",

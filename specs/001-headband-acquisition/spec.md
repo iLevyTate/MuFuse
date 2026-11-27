@@ -174,8 +174,12 @@ preset differ accordingly.
 
 ### Measurable Outcomes
 
-- **SC-001**: From headband power-on to live signal on screen in ≤ 15 seconds in ≥ 9 of 10 attempts.
+- **SC-001**: With the headband switched on and given 5 seconds to start up, live signal on screen
+  within 15 seconds of starting the command, in ≥ 9 of 10 attempts. (Amended 2026-11-26: start-up
+  time after power-on is the headband's own and is not counted; H3 measures from the command.)
 - **SC-002**: A 10-minute recording has < 0.5% missing samples on every stream when the headband is within 2 m.
+  Samples lost on the headset and samples lost between the headset and the PC both count as missing;
+  they are reported separately. (Clarified 2026-11-26.)
 - **SC-003**: After a 10-second headband power cycle, streaming resumes automatically within 20 seconds and the gap is
   recorded with duration accurate to ±0.5 s.
 - **SC-004**: Markers on reload sit within ±1 sample (±4 ms for EEG) of their capture time.
