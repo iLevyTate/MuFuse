@@ -46,6 +46,7 @@ from mufuse.recording.format import Marker
 from mufuse.recording.reader import load_session
 from mufuse.recording.writer import SessionWriter
 from mufuse.runlog import ConnectRun, TimeToSignal, append_run
+from mufuse.sound import tone
 
 app = typer.Typer(
     no_args_is_help=True, help="MuFuse: Punk EEG. Muse S Athena acquisition and recording."
@@ -321,6 +322,7 @@ def _show_and_record(
                         writer.add_marker(Marker(t=t, kind="system", label=label, source="system"))
                 if guide is not None and guide.bells(now - started):
                     console.bell()
+                    tone()  # the terminal may answer the bell with nothing
                 key = read_key()
                 if key == "q":
                     break

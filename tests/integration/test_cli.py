@@ -122,6 +122,22 @@ def test_guided_record_writes_cue_markers_at_their_scheduled_times(
     assert marker.t - session.manifest["started_at"] == pytest.approx(0.6, abs=0.05)
 
 
+def test_a_bell_cue_plays_the_tone_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    guide_file = tmp_path / "guide.json"
+    Guide(
+        cues=(Cue(0, "Eyes closed until the bell"), Cue(0.3, "Open your eyes", bell=True)),
+        duration=1.0,
+    ).save(guide_file)
+    monkeypatch.setenv("MUFUSE_GUIDE", str(guide_file))
+    rung: list[bool] = []
+    monkeypatch.setattr("mufuse.cli.tone", lambda: rung.append(True))
+    result = runner.invoke(
+        app, ["record", "--source", "sim", "--duration", "1.0", "--out", str(tmp_path / "rec")]
+    )
+    assert result.exit_code == 0, result.output
+    assert rung == [True]
+
+
 # MUFUSE_SIM_WEARER: rehearsing a hardware check on the simulated headband -----------------
 
 

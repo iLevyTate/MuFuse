@@ -40,6 +40,12 @@ def _isolated_run_log(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pyt
     monkeypatch.delenv("MUFUSE_SIM_WEARER", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _no_sound(monkeypatch: pytest.MonkeyPatch):
+    """A guided run under test rings no tone on the machine that runs the tests."""
+    monkeypatch.setattr("mufuse.sound._beep", lambda: None)
+
+
 # Signal quality helpers ------------------------------------------------------------------------
 
 QUICK = Wearer(connect_s=0.0, first_data_s=0.0, scan_s=0.0, stop_s=0.0)  # data from second 0
