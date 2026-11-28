@@ -49,7 +49,11 @@ MUFUSE_SIM_WEARER=resting uv run mufuse record --source sim --duration 120   # d
   `describe.py` (the baseline line, words for the signal only), `serve.py` (`Engine` + `Server`:
   127.0.0.1, per-run token in `serve.json`, SSE `/events`, `POST /command`; message examples in
   `tests/data/serve_messages/`).
-- `cli.py` — `devices / stream / record / inspect / features / serve / quality`; `banner.py` — header shown only on a TTY.
+- `observe/` — feature 006: `observations.py` (15 s median z ≥ 2 starts, < 1 ends), `interpreters.py`
+  (TOML manifests in `manifests/`, first-party `REGISTRY`, `attention_drift`), `evaluate.py` (random
+  check-ins only, AUC, permutation shuffled within days, fixed looks), `ledger.py` (standing, early
+  feedback). Scores of every check-in are kept (shadow mode); insights only when promoted or opted in.
+- `cli.py` — `devices / stream / record / inspect / features / serve / interpreters / quality`; `banner.py` — header shown only on a TTY.
 
 ## Gotchas
 - Only one device can connect to the headband; the phone Muse app must be closed.

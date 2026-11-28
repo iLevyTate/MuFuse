@@ -19,6 +19,7 @@ from tests.conftest import QUICK, FakeClock
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "data" / "serve_messages"
 RESTING = replace(QUICK, resting=True)
+RARE = {"observation", "insight"}  # need minutes of baseline; fed directly in their own tests
 
 
 class Caught:
@@ -189,6 +190,8 @@ def test_every_message_has_the_shape_of_its_stored_example(tmp_path: Path) -> No
     seen = {m["type"]: m for m in caught.drain()}
     for path in sorted(EXAMPLES.glob("*.json")):
         example = json.loads(path.read_text(encoding="utf-8"))
+        if example["type"] in RARE:
+            continue  # checked where they can happen: tests/integration/test_observe_serve.py
         assert example["type"] in seen, path.name
         _same_shape(seen[example["type"]], example)
     assert set(seen) <= {

@@ -1,0 +1,13 @@
+# Interpreter manifest (006 decision 3). Read by mufuse.observe.interpreters.
+id = "attention_drift"
+version = 1
+title = "Attention drift"
+tier = "speculative"  # grounded | extrapolated | speculative
+target = ["daydreaming", "stuck on a thought", "memory"]
+needs = ["blinks_per_min", "alpha_share"]
+needs_share = 0.5  # of the window's seconds that must carry each needed series
+window_s = 30.0
+threshold = 1.0  # a score at or above this "fires"
+looks = [50, 100, 150]
+# Approved phrasing. {counts} is filled in by code ("n of m times") or left out before any data.
+phrasing = "Blink rate and alpha are up on your baseline{counts}. What was going on just then?"

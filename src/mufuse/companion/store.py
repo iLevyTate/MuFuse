@@ -52,6 +52,21 @@ CREATE TABLE IF NOT EXISTS marks (
     t REAL NOT NULL, label TEXT NOT NULL, source TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS scores (
+    checkin INTEGER NOT NULL REFERENCES checkins(id),
+    interpreter TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    score REAL,
+    fired INTEGER NOT NULL,
+    after_insight INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (checkin, interpreter)
+);
+CREATE TABLE IF NOT EXISTS interpreters (
+    id TEXT PRIMARY KEY,
+    state TEXT NOT NULL DEFAULT 'shadow',
+    last_look INTEGER NOT NULL DEFAULT 0,
+    early INTEGER NOT NULL DEFAULT 0
+);
 """
 
 
@@ -186,3 +201,65 @@ class Store:
             " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (json.dumps(list(answers)),),
         )
+
+    # Interpreters (006) ------------------------------------------------------------------------
+
+    def add_score(
+        self,
+        checkin: int,
+        *,
+        interpreter: str,
+        version: int,
+        score: float | None,
+        fired: bool,
+        after_insight: bool = False,
+    ) -> None:
+        self._db.execute(
+            "INSERT OR REPLACE INTO scores VALUES (?, ?, ?, ?, ?, ?)",
+            (checkin, interpreter, version, score, int(fired), int(after_insight)),
+        )
+
+    def scored(self, interpreter: str) -> list[Scored]:
+        """Answered random check-ins with a score, in time order: what an evaluation reads.
+
+        Check-ins of another source, without a score, or asked soon after an insight was shown
+        are left out (constitution V; 006 decisions 6 and 9).
+        """
+        rows = self._db.execute(
+            "SELECT c.asked_t, s.score, c.answer FROM scores s JOIN checkins c ON c.id = s.checkin"
+            " WHERE s.interpreter = ? AND c.source = 'random' AND c.answer IS NOT NULL"
+            " AND s.score IS NOT NULL AND s.after_insight = 0 ORDER BY c.asked_t",
+            (interpreter,),
+        )
+        return [Scored(float(t), float(score), str(answer)) for t, score, answer in rows]
+
+    def interpreter(self, id_: str) -> InterpreterState:
+        row = self._db.execute(
+            "SELECT state, last_look, early FROM interpreters WHERE id = ?", (id_,)
+        ).fetchone()
+        if row is None:
+            return InterpreterState(id_, "shadow", 0, False)
+        return InterpreterState(id_, row[0], int(row[1]), bool(row[2]))
+
+    def set_interpreter(self, state: InterpreterState) -> None:
+        self._db.execute(
+            "INSERT INTO interpreters (id, state, last_look, early) VALUES (?, ?, ?, ?)"
+            " ON CONFLICT(id) DO UPDATE SET state = excluded.state,"
+            " last_look = excluded.last_look, early = excluded.early",
+            (state.id, state.state, state.last_look, int(state.early)),
+        )
+
+
+@dataclass(frozen=True)
+class Scored:
+    asked_t: float
+    score: float
+    answer: str
+
+
+@dataclass(frozen=True)
+class InterpreterState:
+    id: str
+    state: str  # "shadow" | "promoted"
+    last_look: int
+    early: bool  # early feedback switched on for it

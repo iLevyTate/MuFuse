@@ -1,0 +1,10 @@
+{
+ "v": 1,
+ "type": "observation",
+ "state": "start",
+ "series": "blinks_per_min",
+ "direction": "higher",
+ "since": 1700000040.0,
+ "t": 1700000040.0,
+ "text": "blink rate higher than usual"
+}
