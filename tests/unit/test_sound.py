@@ -88,6 +88,7 @@ def test_without_a_player_nothing_runs(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_on_windows_the_tone_goes_to_the_sound_card_from_memory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    assert sys.platform == "win32"  # for the type checker on other systems
     import winsound
 
     played: list[tuple[bytes, int]] = []
@@ -98,6 +99,7 @@ def test_on_windows_the_tone_goes_to_the_sound_card_from_memory(
 
 @pytest.mark.skipif(sys.platform != "win32", reason="winsound exists on Windows only")
 def test_a_windows_machine_without_sound_stays_silent(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert sys.platform == "win32"
     import winsound
 
     def refuse(data: bytes, flags: int) -> None:
