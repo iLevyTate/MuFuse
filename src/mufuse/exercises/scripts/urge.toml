@@ -1,0 +1,37 @@
+# A short exercise in watching an urge rise and fall without acting on it (009). Written for
+# MuFuse. Each step shows from `at` (seconds) until the next one.
+id = "urge"
+title = "Watching an urge"
+duration_s = 240.0
+
+[[step]]
+at = 0.0
+text = "Sit comfortably. This takes about four minutes. Use an urge from now, or recall a recent one."
+
+[[step]]
+at = 20.0
+text = "Find where the urge shows in the body: chest, hands, mouth, stomach. Just locate it."
+
+[[step]]
+at = 50.0
+text = "Describe it to yourself in plain words: warm, tight, buzzing, heavy. No need to change it."
+
+[[step]]
+at = 85.0
+text = "Give its strength a number from 0 to 10, and keep the number in mind."
+
+[[step]]
+at = 110.0
+text = "Watch it like a wave: it rises, peaks and falls. Breathe slowly while you watch."
+
+[[step]]
+at = 160.0
+text = "Check the number again. Higher, lower or the same: all of them are worth noticing."
+
+[[step]]
+at = 190.0
+text = "Notice that for these few minutes the urge was watched, not acted on."
+
+[[step]]
+at = 220.0
+text = "Take one slow breath, then go back to what you were doing."

@@ -28,6 +28,16 @@ from mufuse.acquisition.supervisor import StreamSupervisor
 from mufuse.acquisition.types import SourceError, StreamKind
 from mufuse.banner import print_banner
 from mufuse.config import load_config, save_config
+from mufuse.exercises.breathe import (
+    DEFAULT_MINUTES,
+    DEFAULT_RATE,
+    BreatheReport,
+    breathe_guide,
+    measure,
+)
+from mufuse.exercises.breathe import rehearsal_wearer as breathe_wearer
+from mufuse.exercises.breathe import report_lines as breathe_lines
+from mufuse.exercises.library import load as load_exercise
 from mufuse.fnirs.protocol import FnirsScore
 from mufuse.guide import Guide, guide_from_env
 from mufuse.keys import KeyPoller
@@ -1152,3 +1162,176 @@ def fnirs_score_cmd(
     for line in score_lines(result):
         console.print(line, markup=False, highlight=False)
     raise typer.Exit(0 if result.passed else 1)
+
+
+# mufuse breathe / mufuse exercise (009) --------------------------------------------------------
+
+
+def _breathe(
+    attempt: _Attempt,
+    factory: Callable[[], HeadbandSource],
+    read_key: Callable[[], str | None],
+    out: Path,
+    guide: Guide,
+    rate: float,
+    *,
+    clock: Callable[[], float] = time.time,
+    sleep: Callable[[float], None] = time.sleep,
+    check: Preflight | None = None,
+    on_start: Callable[[], None] | None = None,
+) -> tuple[int, BreatheReport | None, Path | None]:
+    """Record the breathing session, then measure it. Returns the exit code, the report (None
+    when it was stopped early) and the session folder."""
+    folder: list[Path] = []
+
+    def writer(src: HeadbandSource) -> SessionWriter:
+        w = SessionWriter.create(out, src.device, src.streams, notes="breathe", clock=clock)
+        folder.append(w.session_dir)
+        return w
+
+    _run(
+        attempt,
+        factory,
+        guide.duration,
+        writer,
+        clock=clock,
+        sleep=sleep,
+        read_key=read_key,
+        guide=guide,
+        preflight=check,
+        on_start=on_start,
+    )
+    report = measure(load_session(folder[0]), rate)
+    if report is None:
+        console.print("Stopped before the end: the session is saved, but not measured.")
+        return EXIT_INTERRUPTED, None, folder[0]
+    for line in breathe_lines(report):
+        console.print(line, markup=False, highlight=False)
+    return 0, report, folder[0]
+
+
+@app.command()
+def breathe(
+    source: Annotated[
+        SourceKind, typer.Option(help="athena = headband, sim = a simulated wearer who follows")
+    ] = SourceKind.athena,
+    device: DeviceOpt = None,
+    rate: Annotated[float, typer.Option(help="Breaths a minute while pacing")] = DEFAULT_RATE,
+    minutes: Annotated[float, typer.Option(help="Minutes of paced breathing")] = DEFAULT_MINUTES,
+    out: Annotated[Path, typer.Option(help="Recordings folder")] = Path("recordings"),
+    check: Annotated[
+        bool, typer.Option(help="Check the fit first; after 60 s you may start anyway")
+    ] = True,
+) -> None:
+    """Paced breathing: 2 min quiet, N min at the pace, 2 min quiet, then what the pulse did."""
+    try:
+        guide = breathe_guide(rate, minutes)
+    except ValueError as exc:
+        console.print(str(exc), markup=False, highlight=False)
+        raise typer.Exit(EXIT_BAD_ARGS) from exc
+    if source is SourceKind.play:
+        console.print("[red]A breathing session is recorded live: use --source athena or sim[/red]")
+        raise typer.Exit(EXIT_BAD_ARGS)
+    attempt = _Attempt.begin("breathe", source, DEFAULT_PRESET)
+    on_start: Callable[[], None] | None = None
+    if source is SourceKind.sim:
+        from mufuse.acquisition.simulated import Rehearsal
+
+        rehearsal = Rehearsal(breathe_wearer(rate, minutes))
+        factory: Callable[[], HeadbandSource] = rehearsal.source
+        read_key = lambda: rehearsal.read_key() or _read_key()  # noqa: E731
+        on_start = lambda: rehearsal.delay_script(rehearsal.now())  # noqa: E731
+    else:
+        factory, read_key = _source_factory(source, device, DEFAULT_PRESET, None)
+    with _KEYS:
+        code, _, _ = _breathe(
+            attempt,
+            factory,
+            read_key,
+            out,
+            guide,
+            rate,
+            check=Preflight() if check else None,
+            on_start=on_start,
+        )
+    raise typer.Exit(code)
+
+
+exercise_app = typer.Typer(no_args_is_help=True, help="Short guided exercises (009).")
+app.add_typer(exercise_app, name="exercise")
+
+
+def _play(
+    guide: Guide,
+    *,
+    clock: Callable[[], float] = time.time,
+    sleep: Callable[[float], None] = time.sleep,
+    read_key: Callable[[], str | None] = _read_key,
+) -> int:
+    """Show a guide without a headband until it ends or `q` is pressed. Returns the exit code."""
+    started, shown = clock(), ""
+    with _stop_on_ctrl_c() as stop:
+        while not stop.is_set():
+            elapsed = clock() - started
+            if elapsed >= guide.duration:
+                return 0
+            text, _ = guide.current(elapsed)
+            if text != shown:
+                shown = text
+                line = f"{_mmss(elapsed)}  {text}"
+                console.print(line, markup=False, highlight=False, soft_wrap=True)
+            if read_key() == "q":
+                console.print("Stopped.", markup=False, highlight=False)
+                return 0
+            sleep(0.2)
+    return EXIT_INTERRUPTED
+
+
+def _exercise(name: str, source: SourceKind | None, device: str | None, out: Path) -> None:
+    guide = load_exercise(name).guide()
+    if source is None:
+        with _KEYS:
+            raise typer.Exit(_play(guide))
+    if source is SourceKind.play:
+        console.print("[red]Use --source athena or sim, or no --source at all[/red]")
+        raise typer.Exit(EXIT_BAD_ARGS)
+    factory, read_key = _source_factory(source, device, DEFAULT_PRESET, None)
+
+    def writer(src: HeadbandSource) -> SessionWriter:
+        return SessionWriter.create(out, src.device, src.streams, notes=f"exercise {name}")
+
+    with _KEYS:
+        _run(
+            _Attempt.begin(f"exercise {name}", source, DEFAULT_PRESET),
+            factory,
+            guide.duration,
+            writer,
+            read_key=read_key,
+            guide=guide,
+        )
+
+
+ExerciseSourceOpt = Annotated[
+    SourceKind | None,
+    typer.Option(help="Also record with the headband (athena) or the simulator (sim)"),
+]
+
+
+@exercise_app.command("defusion")
+def exercise_defusion(
+    source: ExerciseSourceOpt = None,
+    device: DeviceOpt = None,
+    out: Annotated[Path, typer.Option(help="Recordings folder")] = Path("recordings"),
+) -> None:
+    """Stepping back from a thought: about four minutes of short steps on screen."""
+    _exercise("defusion", source, device, out)
+
+
+@exercise_app.command("urge")
+def exercise_urge(
+    source: ExerciseSourceOpt = None,
+    device: DeviceOpt = None,
+    out: Annotated[Path, typer.Option(help="Recordings folder")] = Path("recordings"),
+) -> None:
+    """Watching an urge rise and fall: about four minutes of short steps on screen."""
+    _exercise("urge", source, device, out)

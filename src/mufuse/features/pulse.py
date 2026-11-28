@@ -84,6 +84,11 @@ def _kept(intervals: FloatArray, p: Params) -> np.ndarray:
     return ok & (np.abs(intervals - median) <= p.beat_off_median * median)
 
 
+def plausible(intervals: FloatArray, p: Params = PARAMS) -> np.ndarray:
+    """Which beat intervals are plausible (0.33-1.5 s, within 30% of their median)."""
+    return _kept(np.asarray(intervals, dtype=np.float64), p)
+
+
 def rmssd_ms(intervals: FloatArray, p: Params = PARAMS) -> float | None:
     """Root mean square of successive differences, over neighbouring intervals both kept."""
     kept = _kept(np.asarray(intervals, dtype=np.float64), p)

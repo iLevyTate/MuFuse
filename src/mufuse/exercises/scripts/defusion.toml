@@ -1,0 +1,37 @@
+# A short exercise in stepping back from a thought (009). Written for MuFuse.
+# Each step shows from `at` (seconds) until the next one. Plain words; nothing to get right.
+id = "defusion"
+title = "Stepping back from a thought"
+duration_s = 240.0
+
+[[step]]
+at = 0.0
+text = "Sit comfortably. This takes about four minutes, and there is nothing to get right."
+
+[[step]]
+at = 15.0
+text = "Pick one thought that keeps coming back today. Let it be there for now."
+
+[[step]]
+at = 40.0
+text = "Put a short label in front of it, silently: 'There is the thought that ...'"
+
+[[step]]
+at = 70.0
+text = "Picture the thought as words on a road sign. Read the sign, then let it slide out of view."
+
+[[step]]
+at = 110.0
+text = "If another thought comes, give it a sign too, and let it pass by."
+
+[[step]]
+at = 150.0
+text = "Say the first thought again in your head, very slowly, in a cartoon voice. Notice the words."
+
+[[step]]
+at = 190.0
+text = "Now notice what is around the thoughts: sounds in the room, the chair, your feet."
+
+[[step]]
+at = 220.0
+text = "Take one slow breath. When it suits you, go back to what you were doing."

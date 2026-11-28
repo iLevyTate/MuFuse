@@ -194,6 +194,9 @@ class Wearer:
     exponent: float = 1.5  # ... the slope of that background
     heart_bpm: float = 72.0
     hemo: tuple[tuple[float, float, float], ...] = ()  # (from, to, ΔHbO µM) at every detector (004)
+    # (from, to, breaths per minute, swing ms): the heartbeat speeds up on each breath in and
+    # slows on each breath out, so beat intervals swing by `swing ms` peak to trough (009)
+    rsa: tuple[tuple[float, float, float, float], ...] = ()
     firmware: str = "3.1.19"
     battery: float = 80.0  # percent
     connect_s: float = 4.0  # how long start() takes
@@ -254,6 +257,24 @@ def _hemodynamics(
         level[:, r850] *= f850
 
 
+def rsa_phase(
+    t: FloatArray, heart_hz: float, spans: Sequence[tuple[float, float, float, float]]
+) -> FloatArray:
+    """The extra pulse phase (radians) of respiratory sinus arrhythmia, as a function of time.
+
+    In a span the heart rate is f0 + df*sin(2*pi*fr*(t - start)); a beat interval is about
+    1/f, so it swings by 2*df/f0**2 peak to trough, and df = swing * f0**2 / 2. The phase is the
+    closed-form integral, so it is the same however the samples are read.
+    """
+    out = np.zeros_like(t)
+    for start, end, per_min, swing_ms in spans:
+        fr = per_min / 60.0
+        df = swing_ms / 1000.0 * heart_hz**2 / 2.0
+        span = np.clip(t, start, end) - start
+        out += 2 * np.pi * df * (1 - np.cos(2 * np.pi * fr * span)) / (2 * np.pi * fr)
+    return out
+
+
 class Rehearsal:
     """One sitting with a scripted wearer.
 
@@ -312,6 +333,7 @@ class Rehearsal:
             turns=spans(w.turns),
             optics=tuple((t + seconds, where) for t, where in w.optics),
             hemo=tuple((a + seconds, b + seconds, um) for a, b, um in w.hemo),
+            rsa=tuple((a + seconds, b + seconds, r, sw) for a, b, r, sw in w.rsa),
         )
         self._keys = [(t + seconds, key) for t, key in self._keys]
 
@@ -433,7 +455,10 @@ class _WornAthena(SimulatedAthena):
             rows = t >= start
             level[rows] = _OPTICS_LEVEL[sensors]
             on_head[rows] = sensors == "head"
-        pulse = PULSE_SHARE * np.sin(2 * np.pi * (wearer.heart_bpm / 60.0) * t) * on_head
+        phase = 2 * np.pi * (wearer.heart_bpm / 60.0) * t
+        if wearer.rsa:
+            phase = phase + rsa_phase(t, wearer.heart_bpm / 60.0, wearer.rsa)
+        pulse = PULSE_SHARE * np.sin(phase) * on_head
         level[:, _LED] *= 1 + pulse[:, None]
         if wearer.hemo:
             _hemodynamics(level, t, wearer.hemo)
