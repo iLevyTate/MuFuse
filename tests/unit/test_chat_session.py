@@ -191,3 +191,9 @@ def test_a_claude_refusal_or_error_is_unavailable() -> None:
     )
     with pytest.raises(ModelUnavailableError, match="no credentials"):
         broken.reply("rules", [])
+
+
+def test_the_model_is_asked_for_plain_text() -> None:
+    model = Fake("Signal is good.")
+    _session(model).ask("hi", GOOD)
+    assert "no Markdown" in model.seen[0][0]

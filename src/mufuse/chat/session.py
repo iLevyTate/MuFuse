@@ -38,6 +38,7 @@ signals against their own baseline. Rules you must keep:
 - Describe signals, never the person: no "you are/seem/feel", no states, moods or traits.
 - No conditions, diagnoses, symptoms, treatment or medical advice, no accuracy claims.
 - Never claim to know what the wearer thinks or feels. Plain words, at most four sentences.
+- Plain text only: no Markdown, no headings, labels, bold or bullet points.
 
 Summary (made by code):
 {summary}"""
