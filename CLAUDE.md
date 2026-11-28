@@ -59,6 +59,9 @@ MUFUSE_SIM_WEARER=resting uv run mufuse record --source sim --duration 120   # d
   the person, conditions, diagnosis, treatment, accuracy claims, mind reading), `summary.py` (numbers
   from code, template answer), `models.py` (Ollama default; Claude opt-in via the `cloud` extra,
   `claude-opus-5-5`, fallbacks on), `session.py`, `client.py`. Never let a model bypass filter or crisis.
+- `voice/` — 007b (`voice` extra): `models.py` (pinned sherpa-onnx models + sha256, `mufuse voice fetch`
+  is the only network step), `listen.py` (Silero VAD + Moonshine), `speak.py` (Pocket TTS; numbers to
+  call are spelled out), `turn.py` (shown before spoken), `check.py`. Audio is never written to disk.
 - `journal/` — feature 008: `timeline.py`, `patterns.py` (random check-ins only; n ≥ 3; every pattern
   shows n, effect in points and "hypothesis"), `calendar.py` (stdlib .ics, meetings), `review.py`
   (static escaped HTML in the user data folder).

@@ -16,7 +16,7 @@ from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 from types import FrameType
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 from rich.console import Console, RenderableType
@@ -64,6 +64,10 @@ from mufuse.sound import tone
 app = typer.Typer(
     no_args_is_help=True, help="MuFuse: Punk EEG. Muse S Athena acquisition and recording."
 )
+if TYPE_CHECKING:
+    from mufuse.voice.listen import Hearing
+    from mufuse.voice.speak import Voice
+
 console = Console()
 
 EXIT_BAD_ARGS, EXIT_NONE_FOUND, EXIT_CONNECT, EXIT_WRITE, EXIT_UNREADABLE = 2, 3, 4, 5, 6
@@ -665,15 +669,26 @@ def chat(
         bool | None,
         typer.Option("--cloud/--local", help="Let the Claude API word replies (summary only)"),
     ] = None,
+    voice: Annotated[
+        bool, typer.Option(help="Speak the question (Enter to talk) and hear the reply")
+    ] = False,
+    small: Annotated[
+        bool, typer.Option(help="With --voice: the smaller, faster recogniser")
+    ] = False,
 ) -> None:
     """Chat with the running engine (`mufuse serve`) in this terminal. An empty line ends it."""
     from mufuse.chat.client import ChatClient, EngineNotRunningError
+    from mufuse.voice.turn import Listener, Speaker, say, voice_turn
 
     try:
         client = ChatClient.from_serve_file()
     except EngineNotRunningError as exc:
         console.print(str(exc), markup=False, highlight=False)
         raise typer.Exit(EXIT_CONNECT) from exc
+    ears: Listener | None = None
+    mouth: Speaker | None = None
+    if voice:
+        ears, mouth = _load_voice(small)
     if cloud is not None:
         try:
             client.cloud(cloud)
@@ -682,21 +697,88 @@ def chat(
             raise typer.Exit(EXIT_CONNECT) from exc
         state = "on: replies may be worded by the Claude API" if cloud else "off"
         console.print(f"Cloud {state}.", markup=False, highlight=False)
-    console.print("Ask what the signal is doing. An empty line ends the chat.", markup=False)
+    if ears is None:
+        console.print("Ask what the signal is doing. An empty line ends the chat.", markup=False)
+    else:
+        console.print("Press Enter and speak, or type a question. q ends the chat.", markup=False)
+
+    def show(line: str) -> None:
+        console.print(line, markup=False, highlight=False)
+
     while True:
         try:
             text = input("> ").strip()
         except EOFError:
             break
-        if not text:
+        if (not text and ears is None) or (ears is not None and text.lower() == "q"):
             break
         try:
-            reply = client.ask(text)
+            if not text and ears is not None:
+                voice_turn(ears, mouth, client.ask, show)
+            else:
+                say(client.ask(text), mouth, show)
         except EngineNotRunningError as exc:
-            console.print(str(exc), markup=False, highlight=False)
+            show(str(exc))
             raise typer.Exit(EXIT_CONNECT) from exc
-        badge = " [cloud]" if reply.get("cloud") else ""
-        console.print(f"{reply.get('reply', reply.get('error'))}{badge}", markup=False)
+
+
+def _load_voice(small: bool) -> tuple[Hearing, Voice]:
+    """The microphone and the voice, or a clear exit saying what is missing (007b)."""
+    try:
+        import sherpa_onnx  # noqa: F401  # pyright: ignore[reportUnusedImport, reportMissingTypeStubs]
+        import sounddevice  # noqa: F401  # pyright: ignore[reportUnusedImport, reportMissingTypeStubs]
+    except (ImportError, OSError) as exc:
+        console.print(f"Voice needs the voice extra ({exc}): uv sync --extra voice", markup=False)
+        raise typer.Exit(EXIT_BAD_ARGS) from exc
+    from mufuse.voice.listen import Hearing
+    from mufuse.voice.models import missing, models_dir
+    from mufuse.voice.speak import Voice
+
+    root = models_dir()
+    if gaps := missing(root, small):
+        names = ", ".join(m.name for m in gaps)
+        console.print(f"Missing speech models ({names}): uv run mufuse voice fetch", markup=False)
+        raise typer.Exit(EXIT_NONE_FOUND)
+    console.print("Loading the speech models…", markup=False)
+    return Hearing(root, small), Voice(root)
+
+
+voice_app = typer.Typer(no_args_is_help=True, help="Speech in and out for the chat (007b).")
+app.add_typer(voice_app, name="voice")
+
+
+@voice_app.command("fetch")
+def voice_fetch(
+    small: Annotated[bool, typer.Option(help="Also the smaller recogniser")] = False,
+) -> None:
+    """Download the pinned speech models once, checked by sha256 (the only network step)."""
+    from mufuse.voice.models import HEAR, ChecksumError, fetch, models_dir, needed
+
+    root = models_dir()
+    wanted = [*needed(), *([HEAR["small"]] if small else [])]
+    for model in wanted:
+        try:
+            path = fetch(model, root, say=lambda line: console.print(line, markup=False))
+        except (ChecksumError, OSError) as exc:
+            console.print(f"{model.name}: {exc}", markup=False, highlight=False)
+            raise typer.Exit(EXIT_WRITE) from exc
+        console.print(f"  ready: {path}", markup=False, highlight=False)
+
+
+@voice_app.command("check")
+def voice_check(
+    small: Annotated[bool, typer.Option(help="Time the smaller recogniser")] = False,
+    play: Annotated[bool, typer.Option(help="Also play the phrase")] = False,
+) -> None:
+    """Time speaking and hearing on this computer (no microphone needed)."""
+    from mufuse.voice.check import round_trip
+
+    ears, mouth = _load_voice(small)
+    result = round_trip(mouth.render, ears.transcribe)
+    for line in result.lines():
+        console.print(line, markup=False, highlight=False)
+    if play:
+        mouth.say(result.phrase)
 
 
 # mufuse journal / timeline / calendar / review (008) ------------------------------------------
