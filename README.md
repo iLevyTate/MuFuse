@@ -6,38 +6,46 @@
   </picture>
 </p>
 
-> **Punk EEG.** Local-first, open-source software that reads your brain and body signals from a
-> consumer headband, notices when something shifts, and helps you journal what actually happened.
+> **Punk EEG.** Local-first, open-source tools for the Muse S Athena headband: check that it sits
+> right, check how far its signals can be trusted on your own head, and build on that.
 
-## What it is
+## What this repository is
 
-- A stack for the **Muse S Athena**: EEG, fNIRS optics, heart rate and motion, streamed and
-  recorded on your own machine.
-- A companion that **describes** signal changes against *your* baseline ("heart rate up, blinks
-  doubled vs this morning") and asks what was going on. You name it; it learns from your answers.
-- **Local-first by default.** Raw signals never leave your device. Deleting everything takes one
-  action.
-- Honest about evidence: every interpretation says how strong the science is and how often it has
-  been right for you.
+The **research rig**. It is a tool for anyone with a Muse S Athena, not the end product:
+
+- **Check the attachment.** The live view grades the contact of every sensor each second and says
+  how much of the head is covered. A preflight check judges the fit before anything else runs.
+- **Calibrate on your own head and your own unit.** One guided sitting checks the headband itself
+  (rates, sample loss, battery, the order of the optics rows). A second guided session cues blinks,
+  jaw clenches, head turns and sensor lifts, and scores how many of them the quality marks find.
+- **Develop on it.** One `HeadbandSource` interface with a real headband, a deterministic
+  simulator and playback of recorded sessions; an open recording format; quality answers that are
+  the same live and replayed. Every test except the hardware ones runs without a headband.
+
+Everything stays on your machine. Recordings are never uploaded and never enter the repository.
 
 ## What it is not
 
+- Not the end product. The companion below is planned, not built.
 - Not mind reading. It can't see your thoughts.
 - Not a mental-state labeller. It never tells you "you are anxious".
 - Not a medical device, diagnosis or therapy, and not a replacement for professional care.
 
-## This repository: the research rig
+## Where it is going
 
-This repository is the **research rig**: it proves that the headband connects, that its signals
-can be recorded and trusted, and it is where the signal research happens. The companion app
-(desk strip, chat, phone) stays planned in [`docs/ROADMAP.md`](docs/ROADMAP.md); it may move to a
-repository of its own later, built on this one. Nothing of those plans is dropped.
+The rig is the ground for a companion that **describes** signal changes against *your* baseline
+("heart rate up, blinks doubled vs this morning") and asks what was going on. You name it; it
+learns from your answers, and every interpretation says how strong the science is and how often
+it has been right for you. That app (desk strip, chat, phone) stays planned in
+[`docs/ROADMAP.md`](docs/ROADMAP.md); it may move to a repository of its own later, built on this
+one. Nothing of those plans is dropped.
 
 ## Status
 
 **001 acquisition** is shipped: connect, stream, auto-reconnect, crash-safe recording with
-markers. **002 signal quality** is built and tested on the simulator; its limits still have to
-be tuned and checked on the headband (`docs/KNOWN-ISSUES.md`).
+markers. **002 signal quality** is built. Its limits were checked on the headband and frozen as
+rules v1 on 2026-11-27; the one sitting that decides its gate is still to be recorded. What the
+marks find, and what they do not find yet, is in [`docs/KNOWN-ISSUES.md`](docs/KNOWN-ISSUES.md).
 
 | Command | What it does |
 |---|---|
@@ -47,8 +55,9 @@ be tuned and checked on the headband (`docs/KNOWN-ISSUES.md`).
 | `mufuse inspect` | Summarize a recorded session, ending with its signal quality |
 | `mufuse quality label` | Record the guided 9.5-minute labelled session (cued blinks, jaw clenches, head turns, sensor lifts) and score it |
 | `mufuse quality score` | Score a labelled recording, or the public Muse 2 set with `--public DIR` |
+| `python scripts/hw_acceptance.py` | Every hardware check of the headband in one guided sitting (`--rehearse` plays it on the simulator) |
 
-Next up: tune and freeze the quality limits, then EEG and heart-rate features, the labelling
+Next up: the gate sitting for signal quality, then EEG and heart-rate features, the labelling
 loop, experimental fNIRS. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 - Rules: [`.specify/memory/constitution.md`](.specify/memory/constitution.md)
@@ -78,11 +87,27 @@ directly. If you previously paired it in Windows settings, remove it there first
 5. `uv run mufuse stream`. The first run scans and remembers your headband. Within about 15 s
    the EEG row should read `ok` for TP9, AF7, AF8, TP10 at roughly 256/52/64 Hz. Press `q` to quit.
 
-TP9 or TP10 not reading `ok`? The ear sensors are a known problem at the moment: see
-`docs/KNOWN-ISSUES.md`.
+TP9 or TP10 not reading `ok`? Ear contact is fragile: see `docs/KNOWN-ISSUES.md` for what to
+try. Everything in signal quality works on the two forehead sensors alone.
 
 Not found? Power-cycle the headband, toggle Windows Bluetooth, make sure the phone isn't
 connected, and stay within about 2 m.
+
+## Checking your own headband
+
+With the headband on and the phone Muse app closed:
+
+```bash
+uv run mufuse stream                                   # fit: each sensor should read ok
+uv run python scripts/hw_acceptance.py                 # the unit: every hardware check, guided
+uv run mufuse quality label --source athena            # your head: 9.5 min of cues, ends with a score
+uv run mufuse quality score recordings/<session_id>    # score that recording again later
+```
+
+Without a headband, `scripts/hw_acceptance.py --rehearse` and `mufuse quality label --source sim`
+play the same sittings on the simulator. What each check asks of you and how it is judged:
+[`tests/hardware/README.md`](tests/hardware/README.md). The quality limits were checked on one
+person and one headband, so a score from your own head is the number that counts for you.
 
 ## Recording
 

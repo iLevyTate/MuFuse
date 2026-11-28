@@ -19,8 +19,9 @@ uv run python scripts/hw_acceptance.py --rehearse --h4-seconds 30
 
 ## Known issue: the ear sensors
 
-The ear sensors (TP9, TP10) do not hold contact at the moment (issue #12). Until that is
-fixed, P0 fails and H8 cannot be judged; every other check has passed. P0 is not loosened.
+The ear sensors (TP9, TP10) do not hold contact reliably (issue #12). While one of them is
+out, P0 fails and H8 cannot be judged; both passed once on 2026-11-27 after the sensors were
+wiped, and every other check has passed. P0 is not loosened.
 Numbers, what is affected and what to try: `docs/KNOWN-ISSUES.md`. The checks that do not need
 ear contact run with:
 

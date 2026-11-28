@@ -1,7 +1,8 @@
 # MuFuse — guidance for Claude
 
-Local-first self-awareness companion for the Muse S Athena headband. Not a medical device.
-This repository is the research rig (acquisition, signal quality, signal research); the app plans in
+Local-first tools for the Muse S Athena headband. Not a medical device.
+This repository is the research rig (acquisition, signal quality, signal research): a tool for others
+to check attachment, calibrate on their own head and develop on, not the end product. The app plans in
 `docs/ROADMAP.md` stay and may move to their own repository later.
 Rules that override everything else here: `.specify/memory/constitution.md`.
 

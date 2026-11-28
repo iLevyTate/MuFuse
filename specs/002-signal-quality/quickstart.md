@@ -26,8 +26,9 @@ uv run python scripts/fetch_muse2_set.py            # 400 MB, to the user cache 
 uv run mufuse quality score --public <printed folder>
 ```
 
-On 2026-11-27 the scripted download worked and the checksum matched. Rules v1 as drafted scored 70.6% of the
-blinks and 22.7% of the jaw clenches there (research R12); the clench task is inferred from the data.
+On 2026-11-27 the scripted download worked and the checksum matched. Rules v1 scores 70.6% of the blinks and
+22.7% of the jaw clenches there, under the 90% of SC-003 (research R12, R13); the clench task is inferred from
+the data.
 
 If the download is refused, fetch `sourcedata.zip` in a browser from
 https://doi.org/10.6084/m9.figshare.30162868.v1 and run `scripts/fetch_muse2_set.py --from <file>`. The set is
@@ -35,8 +36,9 @@ CC BY 4.0 (Lee and Ahn) and never enters the repo.
 
 ## Headband sitting (SC-001, SC-002, SC-004, and SC-005 on the device)
 
-Two sittings of about 10 minutes each. The first, now, records the data the limits are tuned on (T055); its score
-is information, not the gate. The second, after the limits are frozen as rules v1 (T056), is the gate (T061).
+Two sittings of about 10 minutes each. The first was recorded on 2026-11-27 (research R17); the limits were
+checked on it and frozen as rules v1 without a change (R13), so its score is information, not the gate. The
+second, recorded after the freeze, is the gate (T061). Anyone else with an Athena needs one sitting only.
 Headband on and awake, phone Muse app closed, in the user's own PowerShell window:
 
 ```powershell
