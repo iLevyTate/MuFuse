@@ -46,6 +46,24 @@ def _no_sound(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr("mufuse.sound._beep", lambda: None)
 
 
+@pytest.fixture(autouse=True)
+def _close_stores(monkeypatch: pytest.MonkeyPatch):
+    """Every check-in store a test opens is closed when the test ends (no unclosed databases)."""
+    from mufuse.companion.store import Store
+
+    opened: list[Store] = []
+    real_init = Store.__init__
+
+    def tracking_init(self: Store, *args: object, **kwargs: object) -> None:
+        real_init(self, *args, **kwargs)  # type: ignore[arg-type]
+        opened.append(self)
+
+    monkeypatch.setattr(Store, "__init__", tracking_init)
+    yield
+    for store in opened:
+        store.close()
+
+
 # Signal quality helpers ------------------------------------------------------------------------
 
 QUICK = Wearer(connect_s=0.0, first_data_s=0.0, scan_s=0.0, stop_s=0.0)  # data from second 0
