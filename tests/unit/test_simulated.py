@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import signal
 from dataclasses import replace
 
@@ -215,18 +214,24 @@ def test_a_head_turn_swings_the_gyroscope(clock: FakeClock) -> None:
 
 def test_a_wearer_without_the_new_faults_gives_the_samples_of_before(clock: FakeClock) -> None:
     # Pinned before feature 002 changed the simulator: the checks of feature 001 keep their signal.
+    # Fingerprints, not a byte hash: np.sin may differ in the last bit between platforms.
     wearer = replace(QUICK, lifted=((1.0, 2.0, "TP9"),), blinks=((2.0, 4.0),))
     reads = rehearse(wearer, clock, 4.0)
     expected = {
-        StreamKind.EEG: ((1024, 8), "c656c2269558f4e4", -8827.06028565366),
-        StreamKind.MOTION: ((208, 6), "1df6d19b42e63f75", 207.66953079969386),
-        StreamKind.OPTICS: ((256, 17), "b17e1d5e27375d4e", 600840731.1472332),
+        StreamKind.EEG: ((1024, 8), (-8827.06028565366, 19444825.82551266, -3350556.694377862)),
+        StreamKind.MOTION: ((208, 6), (207.66953079969386, 207.88797178244022, 129519.36039476746)),
+        StreamKind.OPTICS: (
+            (256, 17),
+            (600840731.1472332, 148638092435007.88, 1307026096825.955),
+        ),
     }
-    for kind, (shape, digest, total) in expected.items():
+    for kind, (shape, (total, squares, ordered)) in expected.items():
         data = np.concatenate([c.data for read in reads for c in read if c.kind is kind])
         assert data.shape == shape
-        assert float(data.sum()) == pytest.approx(total, rel=1e-12)
-        assert hashlib.sha256(np.ascontiguousarray(data).tobytes()).hexdigest()[:16] == digest
+        weights = np.arange(1, data.size + 1, dtype=np.float64).reshape(shape)  # catches reorders
+        assert float(data.sum()) == pytest.approx(total, rel=1e-9)
+        assert float((data**2).sum()) == pytest.approx(squares, rel=1e-9)
+        assert float((weights * data).sum()) == pytest.approx(ordered, rel=1e-9)
 
 
 def test_blinks_show_on_the_forehead_about_once_a_second(clock: FakeClock) -> None:
