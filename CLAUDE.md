@@ -19,6 +19,8 @@ uv run python scripts/hw_acceptance.py --rehearse  # the same on the simulator, 
 uv run mufuse quality label --source sim           # the 002 labelled session, simulated (9.5 min)
 uv run python scripts/make_quality_reference.py    # after a meant rules change; raise RULES_VERSION
 uv run python scripts/make_features_reference.py   # after a meant features change; raise FEATURES_VERSION
+uv run python scripts/make_fnirs_reference.py      # after a meant fNIRS change; raise FNIRS_VERSION
+uv run mufuse fnirs protocol --source sim          # the 004 validation protocol, simulated (12 min)
 MUFUSE_SIM_WEARER=resting uv run mufuse record --source sim --duration 120   # data for `features`
 ```
 
@@ -63,14 +65,20 @@ MUFUSE_SIM_WEARER=resting uv run mufuse record --source sim --duration 120   # d
 - `app/` — feature 005b: the Flutter desk strip; talks only to `mufuse serve` (serve.json, SSE,
   `POST /command`); pure-Dart core in `app/lib/src/`; `cd app && flutter test` replays
   `tests/data/serve_messages/`.
+- `fnirs/` — feature 004 (EXPERIMENTAL): `mbll.py` (base-10 OD, Prahl ε, Scholkmann-Wolf DPF,
+  estimated distances outer 3 cm / inner 1 cm, `FNIRS_VERSION`), `pipeline.py` (glare and moving
+  seconds left out, 0.01-0.2 Hz zero-phase band-pass per piece, SQI, optional short-channel
+  regression), `protocol.py` (guided validation, `f:` cues, scorer on outer detectors).
 - `cli.py` — `devices / stream / record / inspect / features / serve / chat / timeline / journal /
-  calendar / review / interpreters / quality`; `banner.py` — header shown only on a TTY.
+  calendar / review / interpreters / quality / fnirs`; `banner.py` — header shown only on a TTY.
 
 ## Gotchas
 - Only one device can connect to the headband; the phone Muse app must be closed.
 - Never commit personal recordings (`recordings/` is git-ignored); the repo is public.
 - Inject clocks (`tests/conftest.py::FakeClock`) for anything time-dependent.
-- fNIRS hemoglobin is experimental until feature 004's validation passes. BrainFlow optics rows are
+- fNIRS hemoglobin is experimental until feature 004's validation passes (five headband sittings of
+  `mufuse fnirs protocol`, ≥ 70% of blocks in the expected direction): label every ΔHbO/ΔHbR so,
+  in relative units; one log base (base 10) with Prahl ε, never ln with them. BrainFlow optics rows are
   in wire order (OPT1-4 red, 5-8 ambient, 9-12 730 nm, 13-16 850 nm), not Mind Monitor's order;
   guided check F1 confirms it per unit (see `docs/research/2026-11-25-athena-fnirs-resources.md`).
 - Ear sensors (TP9, TP10) are not reliable until issue #12 is fixed: draw no conclusion from
