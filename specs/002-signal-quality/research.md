@@ -1,8 +1,8 @@
 # Research: Signal Quality
 
 Sources: the code of feature 001; `docs/research/2026-11-26-prior-art-and-datasets-survey.md`, section 3.2;
-`docs/KNOWN-ISSUES.md`. Every number called a limit below is an initial value. Limits are tuned in build step 9 and
-then frozen as rules v1 (see R13). The exact v1 definitions are in `contracts/quality-rules.md`.
+`docs/KNOWN-ISSUES.md`. The limits below were drafted first, then checked on real data in build step 9 and frozen
+as rules v1 without a change (see R13). The exact v1 definitions are in `contracts/quality-rules.md`.
 
 ## R1 Stretch
 - **Decision**: a stretch is 256 consecutive EEG samples (1.0 s), not overlapping. The first stretch starts at the
@@ -72,7 +72,7 @@ then frozen as rules v1 (see R13). The exact v1 definitions are in `contracts/qu
   onset. They are eye events, so they also mark the next stretch, and only the 0.8 s rule keeps them from counting
   as blinks. Two blinks 0.45-0.8 s apart therefore count as two, the second being the first one's swing-back.
   To check when the limits are tuned (T055): the swing-back on real blinks, and whether the floor or the 0.8 s
-  rule needs to move.
+  rule needs to move. Checked: neither moves (R13).
 
 ## R6 Muscle tension
 - **Decision**: per forehead sensor and stretch: mean removed, Hann window, power spectrum; the level is the root
@@ -190,6 +190,51 @@ then frozen as rules v1 (see R13). The exact v1 definitions are in `contracts/qu
 - **Rationale**: scoring a detector on the recording it was tuned on proves nothing. Freezing first costs no extra
   sitting, because tuning material is already on disk. The saved sessions never leave the machine and are never
   committed.
+- **Outcome (2026-11-27, T055): no limit moves.** Rules v1 is frozen with the drafted values: blink limit 4
+  spreads and 15 µV, tension 10 µV, gyroscope 20 deg/s, accelerometer 0.05 g. Material on the Athena: the first
+  labelled sitting and the repeated eyes-closed minute (R17), the ten-minute still session of the 001 checks (600
+  stretches, no cues), and the eight complete jaw-and-blink checks of 001. Numbers only.
+  - **Tension, 10 µV**. Level in the quiet minutes: at most 1.8 (eyes open), 6.3 (eyes closed), 3.2 (the repeat).
+    Still session: median 2.1, 99th percentile 6.7, largest 10.9; 1 of 600 stretches is marked. Cued clenches:
+    smallest 14.4, median 25.0, largest 32.0. During head turns the level stays at or under 7.2. Swept from 6 to
+    14 µV, all 20 clenches are found at every value; the still session has 7, 5, 1, 0, 0 marked stretches at 6, 8,
+    10, 12, 14. The limit sits between the quiet 99th percentile and the smallest clench with about a third of
+    room on each side. A deliberate blink also raises the level (median 18.5): a hard blink is muscle work and
+    gets the tension mark too. The jaw checks of 001 are weak material, since a forehead sensor dropped out
+    during the held clench in seven of the eight; where the rest before it was calm (at most 2.0) the clench
+    reached 15.3 and 21.0.
+  - **Gyroscope, 20 deg/s**. Quiet minutes: at most 10.3. Still session: median 0.8, 99th percentile 9.6, largest
+    12.6. Cued turns: smallest 44.4, median 73.1, largest 81.3. One clench reached 19.9, one cued blink 12.5.
+    Swept at 15, 20, 25, 30: turns found 18, 18, 19, 19. The gain at 25 is not a detection: the first two turns
+    ran into one span that began before the cue, and a higher limit only splits it.
+  - **Accelerometer, 0.05 g**. Quiet minutes: at most 0.06. Still session: 99th percentile 0.05, largest 0.08.
+    Turns: 0.06 to 0.15. The limit marks 7 of 600 still stretches and 1 of 110 quiet stretches of the sitting
+    (0.051 to 0.078 g). In each of them the gyroscope reads 9.0 to 12.6 deg/s, about ten times the still median:
+    small real movements, which is what the mark is for. At 0.08 g and above all eight go.
+  - **Blink limit, 4 spreads and 15 µV**. Per-second peak of the envelope (the smaller of the two forehead
+    sensors): at most 9.3 µV in the eyes-open minute; 95th percentile 9.4 in the still session. Cued blinks: the
+    first, missed one 7; the other nineteen 20 to 174, median 39. Floor swept at 10, 12, 13, 15, 17, 20, 25 µV:
+    cued blinks found 19, 19, 19, 19, 19, 18, 17; blinks in the still session 14, 8, 6, 4, 2, 1, 0; the repeated
+    eyes-closed minute 0 at every value. With eyes closed the envelope itself rises (median 9.3 and 6.3 µV,
+    spread 6.8 and 4.7), and the spread rule, not the floor, then sets the limit. The number of spreads (3, 4, 5,
+    6) changes no Athena number. The floor sits above every peak of the eyes-open minute and under every found
+    blink.
+  - **Swing-back (the open point of R5)**: in the blink block 23 blinks are marked for 20 cues, and one of them
+    begins within 1.3 s of the one before. The 0.8 s rule stays.
+  - **Public set**: at the frozen values, blinks 367 of 520 (70.6%) and jaw clenches 118 of 520 (22.7%), as in
+    R12. Blinks by floor 10, 12, 15, 20, 25 µV: 431 (82.9%), 410, 367, 283, 205; by spreads 3, 4, 6: 375, 367,
+    335. Recordings with 18 or more of 20 blinks: 10 of 26 at 15 µV, 17 of 26 at 12 or 10. Contact is not the
+    cause: where both forehead sensors were good in 90% of the task (22 recordings), 298 of 440 are found.
+    Clenches by tension limit 8, 10, 12, 14 µV: 180 (34.6%), 118, 75, 43. No swept value reaches 90% on either
+    kind, and the values that gain most there take the margin away on the Athena (a 10 µV floor lies at the 95th
+    percentile of the still session's peaks; 8 µV of tension marks 5 still stretches in 600). **SC-003 is not met
+    and is reported as a fail.** The forehead-only tension rule does not see the clench of that set (4.4 µV
+    against a rest of 2.3, R12); a personal baseline is feature 003.
+  - **Simulator**: its amplitudes are set in code (blink 150 µV, clench 30 µV, turn about 100 deg/s), far from
+    every limit; the rehearsed session passes unchanged.
+  - **Still open after tuning**: no blink is marked in the eyes-open minute at any floor from 10 µV up (R17). A
+    natural blink may lie under the floor at AF7 and AF8, which are measured against the forehead reference. The
+    gate does not score it; it is a known limit of the blink mark.
 
 ## R14 Simulator
 - **Decision**: `Wearer` gains `noisy`, `flat` and `railed` (from, to, channel) and `turns` (from, to); a clench

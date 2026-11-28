@@ -300,7 +300,7 @@ the number found, and pass or fail against 90%.
 
 **Purpose**: fix the limits before they are scored, then prove them once on the headband.
 
-- [ ] T055 Tune the limits marked *tuned* in `contracts/quality-rules.md` on the saved 001 sessions in
+- [X] T055 Tune the limits marked *tuned* in `contracts/quality-rules.md` on the saved 001 sessions in
   `recordings/`, on the public set and on the simulator (research R13). Write the outcome as numbers only into
   `specs/002-signal-quality/research.md` (R13); no recording, path or device name goes into any committed file
 - [ ] T056 Freeze rules v1 in one commit: `src/mufuse/quality/rules.py`, `contracts/quality-rules.md` (the word
