@@ -11,13 +11,31 @@ from dataclasses import replace
 import numpy as np
 import pytest
 from rich.console import Console
+from rich.style import Style
+from rich.text import Text
 
 from mufuse.acquisition.contact import Reading, SensorView
 from mufuse.acquisition.supervisor import State
 from mufuse.acquisition.types import Chunk, DeviceInfo, StreamKind
 from mufuse.guide import Cue, Guide, action
-from mufuse.live_view import WIDE, LiveStats, Screen, StreamRow, guide_panel, lines
-from tests.conftest import FakeClock
+from mufuse.live_view import (
+    DIM,
+    GREEN,
+    INK,
+    RED,
+    WIDE,
+    YELLOW,
+    LiveStats,
+    Screen,
+    SignalMarks,
+    StreamRow,
+    coverage_line,
+    guide_panel,
+    lines,
+    signal_line,
+)
+from mufuse.quality.answer import Coverage
+from tests.conftest import QUICK, FakeClock, rehearse
 
 DEVICE = DeviceInfo("MuseS-1A2B", "p1041", "simulated", firmware="3.1.31")
 SENSORS = ("TP9", "AF7", "AF8", "TP10")
@@ -243,6 +261,190 @@ def test_the_status_line_is_one_plain_line() -> None:
     assert "NOW: Adjust until all four sensors are good (0:06 left)" in line
 
 
+# Coverage --------------------------------------------------------------------------------------
+
+EARS_OUT = (
+    _view("TP9", "none", 300.0, "hum", mains=0.99),
+    _view("AF7", "good", 31.0),
+    _view("AF8", "good", 28.0),
+    _view("TP10", "none", 120.0, "floating"),
+)
+REDUCED = Coverage("reduced", ("TP9", "TP10"))
+
+
+def _coverage(screen: Screen, width: int = 160) -> list[str]:
+    """The Coverage line, and the lines it continues on."""
+    shown = [line.rstrip() for line in lines(screen, width)]
+    first = next(i for i, line in enumerate(shown) if line.startswith(" Coverage  "))
+    out = [shown[first]]
+    for line in shown[first + 1 :]:
+        if not line.startswith(" " * 11):
+            break
+        out.append(line)
+    return out
+
+
+def test_the_coverage_line_names_the_level_and_each_sensor_that_is_out() -> None:
+    assert _coverage(_screen(sensors=EARS_OUT, coverage=REDUCED)) == [
+        " Coverage  reduced: forehead sensors good · TP9 is not touching skin (mostly mains hum)"
+        " · TP10 is not connected"
+    ]
+
+
+@pytest.mark.parametrize("width", [60, 80])
+def test_the_coverage_line_breaks_between_texts_never_inside_one(width: int) -> None:
+    shown = _coverage(_screen(sensors=EARS_OUT, coverage=REDUCED), width)
+    assert len(shown) > 1
+    assert max(len(line) for line in shown) <= width
+    for words in (
+        "reduced: forehead sensors good",
+        "TP9 is not touching skin (mostly mains hum)",
+        "TP10 is not connected",
+    ):
+        assert any(words in line for line in shown), words
+
+
+def test_the_coverage_line_sits_between_the_sensors_and_the_streams() -> None:
+    shown = lines(_screen(sensors=EARS_OUT, coverage=REDUCED), 80)
+    at = next(i for i, line in enumerate(shown) if line.startswith(" Coverage  "))
+    assert shown[at - 1].startswith("└")  # the bottom of the sensors panel
+    assert next(i for i, line in enumerate(shown) if line.startswith(" EEG ")) > at
+
+
+@pytest.mark.parametrize(
+    ("shown", "why", "text"),
+    [
+        ("settling", "quiet", "AF7 is settling"),
+        ("noisy", "loud", "AF7 is touching but noisy"),
+        ("none", "hum", "AF7 is not touching skin (mostly mains hum)"),
+        ("none", "railed", "AF7 is at the limit of its range"),
+        ("none", "flat", "AF7 gives a flat signal"),
+        ("none", "floating", "AF7 is not connected"),
+    ],
+)
+def test_every_sensor_text_of_the_contract(shown: str, why: str, text: str) -> None:
+    sensors = tuple(
+        _view(n, shown, 200.0, why, left=1) if n == "AF7" else _view(n, "good") for n in SENSORS
+    )
+    screen = _screen(sensors=sensors, coverage=Coverage("one_forehead", ("AF7",)))
+    assert _coverage(screen) == [f" Coverage  one forehead sensor · {text}"]
+
+
+def test_a_headband_that_is_not_on_gets_one_sentence_not_four_faults() -> None:
+    off = (
+        _view("TP9", "none", 300.0, "hum"),
+        _view("AF7", "none", 120.0, "floating"),
+        _view("AF8", "none", 0.0, "flat"),
+        _view("TP10", "none", 120.0, "floating"),
+    )
+    assert _coverage(_screen(sensors=off, coverage=Coverage("none", SENSORS))) == [
+        " Coverage  none · No sensor is touching skin. Is the headband on?"
+    ]
+
+
+def test_coverage_waits_for_the_first_judged_second_and_reads_full_when_all_are_good() -> None:
+    assert _coverage(_screen()) == [" Coverage  waiting"]
+    full = _screen(sensors=ALL_GOOD, coverage=Coverage("full", ()))
+    assert _coverage(full) == [" Coverage  full"]
+
+
+def _colours(text: Text) -> dict[str, str]:
+    """The colour of each coloured piece of `text`, by its words."""
+    out: dict[str, str] = {}
+    for span in text.spans:
+        style = span.style if isinstance(span.style, Style) else Style.parse(span.style)
+        if style.color is not None:
+            out[text.plain[span.start : span.end]] = style.color.get_truecolor().hex.upper()
+    return out
+
+
+def test_only_the_quality_colours_and_only_on_sensor_names_and_the_level() -> None:
+    colours = _colours(coverage_line(_screen(sensors=EARS_OUT, coverage=REDUCED), 160))
+    assert set(colours.values()) <= {GREEN, YELLOW, RED, DIM, INK}
+    graded = {words: c for words, c in colours.items() if c in (GREEN, YELLOW, RED)}
+    assert graded == {"reduced": GREEN, "TP9": RED, "TP10": RED}
+    noisy = (*EARS_OUT[:3], _view("TP10", "noisy", 120.0, "loud"))
+    colours = _colours(
+        coverage_line(_screen(sensors=noisy, coverage=Coverage("reduced", ("TP9", "TP10"))), 160)
+    )
+    assert colours["TP10"] == YELLOW
+
+
+# Signal ----------------------------------------------------------------------------------------
+
+
+def _signal(screen: Screen, width: int = 160) -> list[str]:
+    """The Signal line, and the lines it continues on."""
+    shown = [line.rstrip() for line in lines(screen, width)]
+    first = next(i for i, line in enumerate(shown) if line.startswith(" Signal    "))
+    out = [shown[first]]
+    for line in shown[first + 1 :]:
+        if not line.startswith(" " * 11):
+            break
+        out.append(line)
+    return out
+
+
+@pytest.mark.parametrize(
+    ("marks", "text"),
+    [
+        (
+            SignalMarks(14, True, "moving"),
+            "14 blinks · muscle activity in the signal · head movement",
+        ),
+        (SignalMarks(1, False, "still"), "1 blink"),
+        (SignalMarks(0, True, "still"), "0 blinks · muscle activity in the signal"),
+        (SignalMarks(None, False, "unknown"), "blinks: not available · movement: unknown"),
+    ],
+)
+def test_the_signal_line_counts_blinks_and_names_the_marks(marks: SignalMarks, text: str) -> None:
+    assert _signal(_screen(sensors=ALL_GOOD, signal=marks)) == [f" Signal    {text}"]
+
+
+def test_the_signal_line_waits_and_sits_under_the_coverage() -> None:
+    assert _signal(_screen()) == [" Signal    waiting"]
+    screen = _screen(sensors=EARS_OUT, coverage=REDUCED, signal=SignalMarks(3, False, "still"))
+    shown = [line.rstrip() for line in lines(screen, 60)]
+    at = next(i for i, line in enumerate(shown) if line.startswith(" Signal    "))
+    assert shown[at - 1].startswith(" " * 11)  # the coverage line, continued
+    assert any(line.startswith(" Coverage  ") for line in shown[:at])
+    assert shown[at + 1].startswith(" EEG ")
+
+
+def test_the_signal_line_carries_no_quality_colour() -> None:
+    screen = _screen(signal=SignalMarks(14, True, "moving"))
+    assert set(_colours(signal_line(screen, 160)).values()) <= {DIM, INK}
+
+
+def test_the_status_line_carries_the_signal() -> None:
+    line = _screen(signal=SignalMarks(14, True, "moving")).status_line()
+    assert "signal 14 blinks · muscle activity in the signal · head movement" in line
+    assert "signal waiting" in _screen().status_line()
+
+
+def test_live_stats_count_the_blinks(clock: FakeClock) -> None:
+    stats = LiveStats(clock)
+    reads = rehearse(replace(QUICK, blinks=((7.0, 10.0),)), clock, 12.0)
+    for i, read in enumerate(reads):
+        stats.add(read, clock.now)
+        if i == 11:  # three seconds in: the eye mark is not available yet
+            marks = stats.signal()
+            assert marks is not None
+            assert marks.blinks is None
+    marks = stats.signal()
+    assert marks == SignalMarks(3, False, "still")
+    assert LiveStats(clock).signal() is None
+
+
+def test_the_status_line_carries_the_coverage() -> None:
+    line = _screen(sensors=EARS_OUT, coverage=REDUCED).status_line()
+    assert (
+        "coverage reduced: forehead sensors good · TP9 is not touching skin (mostly mains hum)"
+        " · TP10 is not connected"
+    ) in line
+    assert "coverage waiting" in _screen().status_line()
+
+
 def test_the_now_line_keeps_its_time_left_on_one_line() -> None:
     long = Guide(cues=(Cue(0, "word " * 30),), duration=600.0, title="H4")
     for width in (78, 60, 40):
@@ -314,13 +516,50 @@ def test_battery_keeps_the_last_reported_level(clock: FakeClock) -> None:
     assert stats.battery == 81.0
 
 
-def test_contact_is_graded_on_the_last_second(clock: FakeClock) -> None:
-    stats = LiveStats(clock)
-    stats.add([_eeg(clock.now, 1.0)], clock.now + 1)
+def _motion(t0: float, seconds: float) -> Chunk:
+    n = round(seconds * 52)
+    data = np.zeros((n, 6))
+    data[:, 2] = 1.0  # gravity
+    return Chunk(StreamKind.MOTION, t0 + np.arange(n) / 52, data)
+
+
+def test_contact_waits_for_the_first_judged_stretch(clock: FakeClock) -> None:
+    stats, t0 = LiveStats(clock), clock.now
+    stats.add([_eeg(t0, 1.0), _motion(t0, 1.0)], t0 + 1)
+    assert {v.shown for v in stats.contact()} == {"waiting"}  # a stretch is judged 0.25 s later
+    assert stats.coverage() is None
+    stats.add([_eeg(t0 + 1, 1.0), _motion(t0 + 1, 1.0)], t0 + 2)
     views = stats.contact()
     assert [v.name for v in views] == list(SENSORS)
-    assert {v.shown for v in views} == {"settling"}
+    assert {(v.shown, v.settle_left_s) for v in views} == {("settling", 2)}
+    assert stats.coverage() == Coverage("none", SENSORS)
+    stats.add([_eeg(t0 + 2, 2.0), _motion(t0 + 2, 2.0)], t0 + 4)
+    assert {v.shown for v in stats.contact()} == {"good"}
+    assert stats.coverage() == Coverage("full", ())
     assert LiveStats(clock).contact()[0].shown == "waiting"
+
+
+def test_the_sensor_panel_changes_only_when_a_stretch_is_judged(clock: FakeClock) -> None:
+    stats, t0 = LiveStats(clock), clock.now
+    previous, judged = stats.contact(), 0
+    for read in range(40):  # ten seconds, a quarter of a second at a time
+        start = t0 + read * 0.25
+        stats.add([_eeg(start, 0.25), _motion(start, 0.25)], start + 0.25)
+        views = stats.contact()
+        if views != previous:
+            assert len(stats.answers) > judged, read
+        previous, judged = views, len(stats.answers)
+    assert len(stats.answers) >= 8
+    assert {v.shown for v in stats.contact()} == {"good"}
+
+
+def test_a_gap_sends_the_sensors_back_to_waiting(clock: FakeClock) -> None:
+    stats, t0 = LiveStats(clock), clock.now
+    stats.add([_eeg(t0, 4.0), _motion(t0, 4.0)], t0 + 4)
+    stats.add([_eeg(t0 + 9, 0.25), _motion(t0 + 9, 0.25)], t0 + 9.25)
+    assert stats.answers[-1].no_data
+    assert {v.shown for v in stats.contact()} == {"waiting"}
+    assert stats.coverage() is None
 
 
 def test_glare_is_seen_on_the_sixteen_channel_presets(clock: FakeClock) -> None:

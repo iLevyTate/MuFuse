@@ -228,4 +228,5 @@ data/
 *.fif
 *.xdf
 *.parquet
+!tests/data/
 !tests/data/**

@@ -19,8 +19,9 @@ uv run python scripts/hw_acceptance.py --rehearse --h4-seconds 30
 
 ## Known issue: the ear sensors
 
-The ear sensors (TP9, TP10) do not hold contact at the moment (issue #12). Until that is
-fixed, P0 fails and H8 cannot be judged; every other check has passed. P0 is not loosened.
+The ear sensors (TP9, TP10) do not hold contact reliably (issue #12). While one of them is
+out, P0 fails and H8 cannot be judged; both passed once on 2026-11-27 after the sensors were
+wiped, and every other check has passed. P0 is not loosened.
 Numbers, what is affected and what to try: `docs/KNOWN-ISSUES.md`. The checks that do not need
 ear contact run with:
 
@@ -168,3 +169,46 @@ the live channel check, for example a noisy threshold at the geometric midpoint 
 at rest and the spread with the jaw clenched, or "not separable" when the two overlap. They are
 suggestions only. Nothing in a run changes `src/mufuse/acquisition/signal_check.py`: that is tuned
 in feature 002, in a reviewed commit that cites the run id and is checked with `--rejudge`.
+
+# Hardware sitting: 002 signal quality
+
+One guided session of 9.5 minutes, from one command. The Muse app must be closed.
+
+```
+uv run mufuse quality label --source athena
+```
+
+It starts with a pre-flight check: fit the headband until AF7 and AF8 (forehead) read good; the
+session then starts by itself. If they are not good after 60 s, press `s` to start anyway or `q` to
+stop. The ear sensors are only noted (issue #12). What was out is printed and kept in the recording.
+The end of eyes-closed is a tone from the sound card (Windows, macOS, Linux), not only the terminal
+bell: check your volume. Then the screen tells you each step and counts it ("Blink 7 of 20"):
+
+| Time | Block |
+|---|---|
+| 0:00 | Settle: sit still, check the sensor panel |
+| 0:20 | Sit still, eyes open (1 minute) |
+| 1:20 | Sit still, eyes closed until the bell (1 minute) |
+| 2:30 | 20 blinks, one at each cue |
+| 4:00 | 20 jaw clenches of about 1 s |
+| 5:50 | 20 head turns, to one side and back |
+| 7:40 | 10 lifts of a forehead sensor (AF7, AF8 in turn) for 5 s each |
+| 9:25 | Done: it saves, scores and checks that replaying the recording gives the same answers |
+
+The recording goes to `recordings/` (never committed). To score it again later, or after the
+limits change:
+
+```
+uv run mufuse quality score recordings/<session>
+uv run mufuse inspect recordings/<session>
+```
+
+Rehearse it first without the headband (the simulator follows every cue; it takes the same
+9.5 minutes):
+
+```
+uv run mufuse quality label --source sim --out <a scratch folder>
+```
+
+The ear sensors are not needed: everything in this session reads AF7, AF8 and the motion sensors.
+

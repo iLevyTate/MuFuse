@@ -23,6 +23,7 @@ class Cue:
     at: float
     text: str
     marker: str | None = None
+    bell: bool = False  # ring the terminal bell when it comes up (eyes closed cannot read)
 
 
 def action(at: float, text: str, marker: str | None = None, ready: float = READY_S) -> list[Cue]:
@@ -36,6 +37,7 @@ class Guide:
     duration: float
     title: str = ""
     _fired: set[int] = field(default_factory=set[int], repr=False, compare=False)
+    _rung: set[int] = field(default_factory=set[int], repr=False, compare=False)
 
     def prompt(self, elapsed: float) -> str:
         if elapsed >= self.duration:
@@ -83,6 +85,12 @@ class Guide:
                 self._fired.add(i)
                 out.append((cue.marker, cue.at))
         return out
+
+    def bells(self, elapsed: float) -> int:
+        """How many bell cues came up since the last call (each rings once)."""
+        due = {i for i, c in enumerate(self.cues) if c.bell and c.at <= elapsed} - self._rung
+        self._rung |= due
+        return len(due)
 
     def save(self, path: Path) -> None:
         payload = {

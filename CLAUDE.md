@@ -1,6 +1,9 @@
 # MuFuse — guidance for Claude
 
-Local-first self-awareness companion for the Muse S Athena headband. Not a medical device.
+Local-first tools for the Muse S Athena headband. Not a medical device.
+This repository is the research rig (acquisition, signal quality, signal research): a tool for others
+to check attachment, calibrate on their own head and develop on, not the end product. The app plans in
+`docs/ROADMAP.md` stay and may move to their own repository later.
 Rules that override everything else here: `.specify/memory/constitution.md`.
 
 ## Commands
@@ -13,11 +16,14 @@ uv run pytest -m hardware -s              # needs headband on, Muse app closed
 uv run mufuse stream --source sim         # live view without hardware
 uv run python scripts/hw_acceptance.py             # every hardware check in one sitting
 uv run python scripts/hw_acceptance.py --rehearse  # the same on the simulator, no headband
+uv run mufuse quality label --source sim           # the 002 labelled session, simulated (9.5 min)
+uv run python scripts/make_quality_reference.py    # after a meant rules change; raise RULES_VERSION
 ```
 
 ## Workflow
-- Features go through Spec Kit: `/speckit-specify` → `/speckit-plan` → `/speckit-tasks` → `/speckit-implement`.
-  Specs live in `specs/NNN-name/`; roadmap in `docs/ROADMAP.md`.
+- Each feature gets one design note, `specs/NNN-name/README.md` (goal, gate, decisions, open
+  questions, done list, Constitution Check); full Spec Kit only where a wrong output can harm a
+  person (007's crisis path). 001 and 002 keep their Spec Kit files. Roadmap: `docs/ROADMAP.md`.
 - Test-first. One branch per feature; PR to `main`; merge only when CI (ubuntu + windows) is green.
 - Coverage gate 80% (hardware-only modules `brainflow_athena.py`, `discovery.py` are excluded).
 
@@ -29,7 +35,10 @@ uv run python scripts/hw_acceptance.py --rehearse  # the same on the simulator, 
   never drop samples, retime them. Gaps > 0.25 s are preserved.
 - `acquisition/supervisor.py` — stall (3 s) detection, backoff reconnect, explicit gaps.
 - `recording/` — append-only float64 LE files + JSON manifest + JSONL markers/gaps (crash-safe).
-- `cli.py` — `devices / stream / record / inspect`; `banner.py` — header shown only on a TTY.
+- `quality/` — feature 002: `engine.py` judges each 1 s stretch (contact, coverage, eye, tension,
+  movement) from samples only, the same live and replayed; `labelled.py` the cued session and
+  scorer; `public_set.py` the Muse 2 set. Rules: `specs/002-signal-quality/contracts/quality-rules.md`.
+- `cli.py` — `devices / stream / record / inspect / quality`; `banner.py` — header shown only on a TTY.
 
 ## Gotchas
 - Only one device can connect to the headband; the phone Muse app must be closed.

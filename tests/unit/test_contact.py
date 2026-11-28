@@ -14,14 +14,13 @@ import numpy as np
 import pytest
 
 from mufuse.acquisition.contact import (
-    HOLD_S,
     MAINS_SHARE,
-    ContactTracker,
+    SENSORS,
+    SensorView,
     grade_window,
     tip,
 )
 from mufuse.acquisition.signal_check import NOISY_UV
-from tests.conftest import FakeClock
 
 FS = 256
 T = np.arange(FS) / FS
@@ -128,99 +127,36 @@ def test_too_little_data_is_no_reading() -> None:
     assert grade_window(np.full(FS, np.nan)) is None
 
 
-# Over time: hold before green ------------------------------------------------------------------
-
-
-def _window(*sensors: np.ndarray) -> np.ndarray:
-    return np.column_stack([*sensors, np.zeros((FS, 4))])  # the AUX rows are never looked at
-
-
-def test_a_sensor_turns_green_only_after_three_good_seconds(clock: FakeClock) -> None:
-    tracker = ContactTracker(clock=clock)
-    shown: list[tuple[str, int]] = []
-    for _ in range(8):
-        view = tracker.update(_window(_good(), _good(), _good(), _good()))[0]
-        shown.append((view.shown, view.settle_left_s))
-        clock.advance(0.5)
-    assert shown[:6] == [
-        ("settling", 3),
-        ("settling", 3),
-        ("settling", 2),
-        ("settling", 2),
-        ("settling", 1),
-        ("settling", 1),
-    ]
-    assert shown[6:] == [("good", 0), ("good", 0)]
-    assert HOLD_S == 3.0
-
-
-def test_a_worse_grade_shows_at_once_and_green_must_be_earned_again(clock: FakeClock) -> None:
-    tracker = ContactTracker(clock=clock)
-    for _ in range(7):
-        tracker.update(_window(_good(), _good(), _good(), _good()))
-        clock.advance(0.5)
-    views = tracker.update(_window(_no_contact(), _moving(), _good(), _good()))
-    assert [v.shown for v in views] == ["none", "noisy", "good", "good"]
-    clock.advance(1.0)
-    views = tracker.update(_window(_good(), _good(), _good(), _good()))
-    assert [v.shown for v in views] == ["settling", "settling", "good", "good"]
-    assert views[0].settle_left_s == 3
-
-
-def test_no_data_is_waiting(clock: FakeClock) -> None:
-    views = ContactTracker(clock=clock).update(np.empty((0, 8)))
-    assert [(v.name, v.shown, v.reading) for v in views] == [
-        ("TP9", "waiting", None),
-        ("AF7", "waiting", None),
-        ("AF8", "waiting", None),
-        ("TP10", "waiting", None),
-    ]
-
-
-def test_waiting_forgets_the_good_streak(clock: FakeClock) -> None:
-    tracker = ContactTracker(clock=clock)
-    for _ in range(7):
-        tracker.update(_window(_good(), _good(), _good(), _good()))
-        clock.advance(0.5)
-    tracker.update(np.empty((0, 8)))  # the link dropped
-    clock.advance(0.5)
-    assert tracker.update(_window(_good(), _good(), _good(), _good()))[0].shown == "settling"
-
-
 # One tip, for the sensor that needs it most ---------------------------------------------------
 
 
-def _views(clock: FakeClock, *sensors: np.ndarray, settle: bool = False):  # type: ignore[no-untyped-def]
-    tracker = ContactTracker(clock=clock)
-    if not settle:
-        for _ in range(7):
-            tracker.update(_window(_good(), _good(), _good(), _good()))
-            clock.advance(0.5)
-    return tracker.update(_window(*sensors))
+def _views(*shown: str) -> tuple[SensorView, ...]:
+    return tuple(
+        SensorView(name, state, None)  # type: ignore[arg-type]
+        for name, state in zip(SENSORS, shown, strict=True)
+    )
 
 
-def test_the_tip_goes_to_the_worst_sensor(clock: FakeClock) -> None:
-    views = _views(clock, _moving(), _good(), _good(), _no_contact())
+def test_the_tip_goes_to_the_worst_sensor() -> None:
+    views = _views("noisy", "good", "good", "none")
     assert tip(views) == "TP10: push hair aside, wet the skin behind the ear"
 
 
-def test_a_forehead_sensor_gets_the_forehead_tip(clock: FakeClock) -> None:
-    views = _views(clock, _good(), _no_contact(), _good(), _good())
-    text = tip(views)
+def test_a_forehead_sensor_gets_the_forehead_tip() -> None:
+    text = tip(_views("good", "none", "good", "good"))
     assert text is not None
     assert text.startswith("AF7: ")
     assert "forehead" in text
 
 
-def test_a_noisy_sensor_gets_the_hold_still_tip(clock: FakeClock) -> None:
-    assert tip(_views(clock, _good(), _good(), _moving(), _good())) == (
-        "AF8: hold still, relax your jaw"
-    )
+def test_a_noisy_sensor_gets_the_hold_still_tip() -> None:
+    assert tip(_views("good", "good", "noisy", "good")) == "AF8: hold still, relax your jaw"
 
 
-def test_settling_sensors_get_a_short_tip_and_all_good_none(clock: FakeClock) -> None:
-    assert tip(_views(clock, _good(), _good(), _good(), _good(), settle=True)) == (
+def test_settling_sensors_get_a_short_tip_and_all_good_none() -> None:
+    assert tip(_views("settling", "settling", "good", "good")) == (
         "TP9: hold still while the signal settles"
     )
-    assert tip(_views(clock, _good(), _good(), _good(), _good())) is None
-    assert tip(ContactTracker(clock=clock).update(np.empty((0, 8)))) is None
+    assert tip(_views("good", "good", "good", "good")) is None
+    assert tip(_views("waiting", "waiting", "waiting", "waiting")) is None
+    assert tip(()) is None

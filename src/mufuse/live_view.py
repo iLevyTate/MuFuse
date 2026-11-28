@@ -7,8 +7,13 @@ Laid out so the first question, "is it on right?", is answered first:
    position map of every sensor (forehead EEG, the four fNIRS detectors around their light source,
    the reference, the ear sensors), and beside it one fixed-width row per sensor with its grade,
    a 2 s trace and a number; then one tip for the worst sensor;
-3. one streams line: rate and share received per stream, gaps, markers;
-4. the guide of a guided session, and the keys.
+3. the quality block: the coverage of the newest judged second and the sensors that are out,
+   then the signal: blinks counted so far, muscle activity and head movement in that second;
+4. one streams line: rate and share received per stream, gaps, markers;
+5. the guide of a guided session, and the keys.
+
+Contact, coverage and the signal marks come from the quality engine (`mufuse.quality.engine`),
+one answer per judged second, so nothing on them changes more often than once a second.
 
 Every column has a fixed width so a changing value never moves the rest. From 78 columns the
 map sits beside the list; below that they stack instead of wrapping.
@@ -43,7 +48,7 @@ from rich.table import Table
 from rich.text import Text
 
 from mufuse.acquisition.athena import ATHENA_STREAMS, preset_warning
-from mufuse.acquisition.contact import SENSORS, ContactTracker, SensorView, tip
+from mufuse.acquisition.contact import SENSORS, Grade, Reading, SensorView, Why, tip
 from mufuse.acquisition.optics import (
     DETECTORS,
     PULSE_WINDOW_S,
@@ -55,6 +60,8 @@ from mufuse.acquisition.supervisor import State, StreamSupervisor
 from mufuse.acquisition.types import Chunk, DeviceInfo, FloatArray, StreamKind
 from mufuse.banner import CLI_ORANGE
 from mufuse.guide import Guide
+from mufuse.quality.answer import Blink, ContactState, Coverage, Movement, QualityAnswer
+from mufuse.quality.engine import QualityEngine
 
 # docs/BRAND.md: scope-green, fair-amber, clip-red; the CLI orange; muted greys for labels.
 GREEN, YELLOW, RED = "#22C55E", "#EAB308", "#EF4444"
@@ -131,15 +138,31 @@ class LiveStats:
     """Rolling window of recent chunks, and what the view keeps between refreshes."""
 
     def __init__(self, clock: Callable[[], float] = time.time) -> None:
+        # `clock` is kept for callers; contact is judged on sample timestamps, not on a clock.
         self._recent: dict[StreamKind, deque[Chunk]] = {k: deque() for k in StreamKind}
         self._since: float | None = None
         self._now = 0.0
         self.battery: float | None = None  # the last level the headband reported
-        self._contact = ContactTracker(clock=clock)
+        self._engine = QualityEngine()
+        self._answers: list[QualityAnswer] = []
+        self._blinks: list[Blink] = []
+
+    @property
+    def answers(self) -> tuple[QualityAnswer, ...]:
+        """Every answer the engine gave so far, in time order."""
+        return tuple(self._answers)
+
+    @property
+    def blinks(self) -> tuple[Blink, ...]:
+        """Every blink the engine found so far, in time order."""
+        return tuple(self._blinks)
 
     def add(self, chunks: list[Chunk], now: float) -> None:
         self._since = now if self._since is None else self._since
         self._now = now
+        judged = self._engine.feed(chunks)
+        self._answers += judged.answers
+        self._blinks += judged.blinks
         for chunk in chunks:
             self._recent[chunk.kind].append(chunk)
             if chunk.kind is StreamKind.OPTICS and chunk.n_samples:
@@ -172,8 +195,40 @@ class LiveStats:
         q = self._recent[kind]
         return sum(int((c.timestamps > self._now - WINDOW_S).sum()) for c in q) / span
 
+    def finish(self) -> None:
+        """The stream has ended: the stretches that still wait are judged with what exists."""
+        judged = self._engine.finish()
+        self._answers += judged.answers
+        self._blinks += judged.blinks
+
+    def _newest(self) -> QualityAnswer | None:
+        """The newest judged second, or None before the first one and after a gap."""
+        newest = self._answers[-1] if self._answers else None
+        return None if newest is None or newest.no_data else newest
+
     def contact(self) -> tuple[SensorView, ...]:
-        return self._contact.update(self.last(StreamKind.EEG, CONTACT_S))
+        newest = self._newest()
+        if newest is None:
+            return tuple(SensorView(name, "waiting", None) for name in SENSORS)
+        return tuple(self._view(c) for c in newest.contact)
+
+    def coverage(self) -> Coverage | None:
+        newest = self._newest()
+        return None if newest is None else newest.coverage
+
+    def signal(self) -> SignalMarks | None:
+        """The blink count and the marks of the newest judged second."""
+        newest = self._newest()
+        if newest is None:
+            return None
+        blinks = None if newest.eye == "unavailable" else len(self._blinks)
+        return SignalMarks(blinks, newest.tension == "yes", newest.movement)
+
+    def _view(self, c: ContactState) -> SensorView:
+        grade: Grade = "none" if c.state == "none" else "noisy" if c.state == "noisy" else "good"
+        why: Why = "quiet" if c.reason is None else c.reason
+        left = self._engine.settle_left(c.sensor) if c.state == "settling" else 0
+        return SensorView(c.sensor, c.state, Reading(grade, why, c.spread_uv, c.mains_share), left)
 
     def traces(self) -> dict[str, tuple[float, ...]]:
         """Per EEG sensor, the spread (µV) of each of TRACE_N slices of the last 2 s."""
@@ -196,6 +251,15 @@ class LiveStats:
         return bool(frames.shape[0]) and bool(
             too_much_light(frames, sixteen_channels=preset in SIXTEEN).any()
         )
+
+
+@dataclass(frozen=True)
+class SignalMarks:
+    """The Signal line: blinks so far (None: not available now) and the newest second's marks."""
+
+    blinks: int | None
+    tension: bool
+    movement: Movement
 
 
 @dataclass(frozen=True)
@@ -225,6 +289,8 @@ class Screen:
     notes: tuple[str, ...] = field(default=())
     traces: Mapping[str, tuple[float, ...]] = field(default_factory=dict[str, tuple[float, ...]])
     detectors: Mapping[str, DetectorGrade] = field(default_factory=dict[str, DetectorGrade])
+    coverage: Coverage | None = None  # None until the first second is judged
+    signal: SignalMarks | None = None  # likewise
 
     def with_time(self, elapsed: float, guide: Guide | None, guide_elapsed: float) -> Screen:
         return replace(
@@ -240,6 +306,8 @@ class Screen:
         if self.state is State.RECONNECTING:
             yield Text(f" link: {self.link_error or 'reconnecting…'}", style=RED, overflow="fold")
         yield _sensors_panel(self, g, width)
+        yield coverage_line(self, width)
+        yield signal_line(self, width)
         yield _streams_line(self, width)
         if self.guide is not None:
             yield GuideView(*self.guide, width=min(WIDE, width))
@@ -251,6 +319,8 @@ class Screen:
         by = {v.name: v for v in self.sensors}
         parts = [_mmss(self.elapsed), self.state.value]
         parts += [f"{n} {_EEG[by[n].shown][1]}" for n in SENSORS if n in by]
+        parts.append("coverage " + " · ".join(words for words, _ in _coverage_pieces(self)))
+        parts.append("signal " + " · ".join(words for words, _ in _signal_pieces(self)))
         if self.detectors:
             pulse = sum(v == "pulse" for v in self.detectors.values())
             parts.append(f"fNIRS {pulse}/{len(self.detectors)} pulse")
@@ -304,6 +374,8 @@ def render(
         notes=tuple(notes),
         traces=stats.traces(),
         detectors=stats.detectors(preset),
+        coverage=stats.coverage(),
+        signal=stats.signal(),
     )
 
 
@@ -509,6 +581,109 @@ def _sensors_panel(s: Screen, g: Glyphs, width: int) -> Panel:
         box=box.SQUARE,
         padding=(0, 1),
     )
+
+
+# Coverage --------------------------------------------------------------------------------------
+
+COVERAGE_WORDS = {  # contracts/cli.md: the level, as the coverage line says it
+    "full": "full",
+    "reduced": "reduced: forehead sensors good",
+    "one_forehead": "one forehead sensor",
+    "none": "none",
+}
+SENSOR_TEXTS = {  # contracts/cli.md: a sensor that is out, by its state or its reason
+    "settling": "{name} is settling",
+    "loud": "{name} is touching but noisy",
+    "hum": "{name} is not touching skin (mostly mains hum)",
+    "railed": "{name} is at the limit of its range",
+    "flat": "{name} gives a flat signal",
+    "floating": "{name} is not connected",
+}
+NO_SENSOR = "No sensor is touching skin. Is the headband on?"
+_LEVEL_COLOUR = {"full": GREEN, "reduced": GREEN, "one_forehead": YELLOW, "none": RED}
+SIGNAL_TEXTS = {  # contracts/cli.md: the Signal line names the signal, never the person
+    "no_blinks": "blinks: not available",
+    "tension": "muscle activity in the signal",
+    "moving": "head movement",
+    "unknown": "movement: unknown",
+}
+
+
+def _out_text(view: SensorView) -> str:
+    why = view.reading.why if view.reading is not None else ""
+    key = "settling" if view.shown == "settling" else why
+    return SENSOR_TEXTS.get(key, "{name} is waiting").format(name=view.name)
+
+
+def _coverage_pieces(s: Screen) -> list[tuple[str, Text]]:
+    """The coverage as pieces that are never broken: its plain words and how they are drawn.
+    Colour goes on the level word and on sensor names only."""
+    if s.coverage is None:
+        return [("waiting", Text("waiting", style=DIM))]
+    level = COVERAGE_WORDS[s.coverage.level]
+    word, colon, rest = level.partition(":")
+    pieces = [
+        (
+            level,
+            Text.assemble((word, f"bold {_LEVEL_COLOUR[s.coverage.level]}"), (colon + rest, INK)),
+        )
+    ]
+    by = {v.name: v for v in s.sensors}
+    if s.sensors and all(v.shown == "none" for v in s.sensors):
+        return [*pieces, (NO_SENSOR, Text(NO_SENSOR, style=f"bold {INK}"))]
+    for name in s.coverage.out:
+        view = by.get(name)
+        if view is None:
+            continue
+        text = _out_text(view)
+        colour = _EEG[view.shown][0]
+        pieces.append((text, Text.assemble((name, f"bold {colour}"), (text[len(name) :], INK))))
+    return pieces
+
+
+def _signal_pieces(s: Screen) -> list[tuple[str, Text]]:
+    """The Signal line's pieces; no quality colour, since they grade nothing."""
+    if s.signal is None:
+        return [("waiting", Text("waiting", style=DIM))]
+    marks = s.signal
+    if marks.blinks is None:
+        words = [SIGNAL_TEXTS["no_blinks"]]
+    else:
+        words = [f"{marks.blinks} blink{'' if marks.blinks == 1 else 's'}"]
+    if marks.tension:
+        words.append(SIGNAL_TEXTS["tension"])
+    if marks.movement in ("moving", "unknown"):
+        words.append(SIGNAL_TEXTS[marks.movement])
+    return [(w, Text(w, style=INK)) for w in words]
+
+
+def _block(label: str, pieces: list[tuple[str, Text]], width: int) -> Text:
+    """` <label>  <piece> · <piece>`, broken between pieces (never inside one) to fit `width`."""
+    out, line = Text(), Text.assemble((f" {label:<8}  ", DIM))
+    indent = " " * line.cell_len
+    first = True
+    for _, piece in pieces:
+        joint = Text("") if first else Text(" · ", style=DIM)
+        if not first and line.cell_len + joint.cell_len + piece.cell_len > width:
+            out.append_text(line)
+            out.append("\n")
+            line, joint = Text(indent), Text("")
+        line.append_text(joint)
+        line.append_text(piece)
+        first = False
+    out.append_text(line)
+    out.no_wrap, out.overflow = True, "ellipsis"
+    return out
+
+
+def coverage_line(s: Screen, width: int) -> Text:
+    """`Coverage  <level> · <each sensor that is out>`."""
+    return _block("Coverage", _coverage_pieces(s), width)
+
+
+def signal_line(s: Screen, width: int) -> Text:
+    """`Signal    <blinks> · <marks of the newest second>`."""
+    return _block("Signal", _signal_pieces(s), width)
 
 
 # Streams ---------------------------------------------------------------------------------------

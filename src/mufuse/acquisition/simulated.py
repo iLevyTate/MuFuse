@@ -11,7 +11,7 @@ from __future__ import annotations
 import signal
 import time
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 import numpy as np
@@ -123,7 +123,8 @@ class SimulatedAthena:
 # section 2.5); the link timings from this project's own headband (4.2-5.8 s from connect to the
 # first EEG, 7.3 s to release, a scan that gives up after 15 s). Guessed, because no capture
 # shows them: a blink, a jaw clench, the LED rows off the head, what room light adds to the
-# ambient rows, how long the headband takes to start up, and how fast a lost link is let go.
+# ambient rows, how long the headband takes to start up, and how fast a lost link is let go;
+# also a noisy sensor, a clench as the forehead sees it, and a head turn.
 
 CTRL_C = "ctrl_c"  # a scripted key that arrives as the console's interrupt signal
 Sensors = Literal["head", "light", "covered"]  # where the optical sensors are
@@ -134,6 +135,8 @@ REST_OFFSET_UV = (1.0, -54.0, 10.0, 2.0)  # TP9, AF7, AF8, TP10: real data is no
 FLOAT_UV, FLOAT_SCATTER_UV = 115.0, 25.0
 FLOAT_DIP_UV = np.array([-75.0, -675.0, -460.0] + [0.0] * 9)  # one cycle, from the level
 CLENCH_UV = 80.0  # broadband, at both ears
+CLENCH_FOREHEAD_UV = 30.0  # ... and weaker on the forehead
+NOISY_UV = 150.0  # broadband, on a sensor that touches badly
 BLINK_UV, BLINK_S = 150.0, 0.3  # one bump a second on the forehead
 
 # OPT1-16 in BrainFlow wire order (red, ambient, 730 nm, 850 nm), medians on the head. The
@@ -157,6 +160,10 @@ LED_IN_LIGHT = 300.0  # an LED row with no skin in front of it
 LED_COVERED = 0.6  # ... and under a hand, as a share of its level on the head
 BATTERY_SILENT_S = 10.0  # the battery reads 0 until the headband's first status message
 
+# A head turn: there and back, once every two seconds, about the vertical axis.
+TURN_DPS, TURN_ACC_G, TURN_HZ = 100.0, 0.04, 0.5
+_ACC_X, _GYRO_Z = 0, 5  # MOTION columns
+
 
 def _optics_levels() -> dict[Sensors, FloatArray]:
     light, covered = OPTICS_HEAD.copy(), OPTICS_HEAD.copy()
@@ -177,6 +184,10 @@ class Wearer:
     lifted: tuple[tuple[float, float, str], ...] = ()  # (from, to, EEG channel) off the skin
     clench: tuple[tuple[float, float], ...] = ()  # (from, to): jaw clenched
     blinks: tuple[tuple[float, float], ...] = ()  # (from, to): blinking once a second
+    noisy: tuple[tuple[float, float, str], ...] = ()  # (from, to, EEG channel) touching badly
+    flat: tuple[tuple[float, float, str], ...] = ()  # (from, to, EEG channel) gives one value
+    railed: tuple[tuple[float, float, str], ...] = ()  # (from, to, EEG channel) at its limit
+    turns: tuple[tuple[float, float], ...] = ()  # (from, to): the head turns there and back
     optics: tuple[tuple[float, Sensors], ...] = ()  # (from, where), in order; on the head before
     keys: tuple[tuple[float, str], ...] = ()  # (when, key); CTRL_C is the signal, not a key
     firmware: str = "3.1.19"
@@ -219,6 +230,34 @@ class Rehearsal:
         """Seconds into the script; 0 until it begins."""
         return 0.0 if self.t0 is None else self.clock() - self.t0
 
+    def delay_script(self, seconds: float) -> None:
+        """Move everything the wearer still has to do `seconds` later.
+
+        A guided run may wait for a good fit before its first cue; the scripted wearer, who follows
+        the cues, waits with it. The headband's own timings (connect, scan, release, switched off)
+        stay where they are.
+        """
+        w = self.wearer
+
+        def spans(xs: tuple[tuple[float, float], ...]) -> tuple[tuple[float, float], ...]:
+            return tuple((a + seconds, b + seconds) for a, b in xs)
+
+        def on(xs: tuple[tuple[float, float, str], ...]) -> tuple[tuple[float, float, str], ...]:
+            return tuple((a + seconds, b + seconds, ch) for a, b, ch in xs)
+
+        self.wearer = replace(
+            w,
+            lifted=on(w.lifted),
+            clench=spans(w.clench),
+            blinks=spans(w.blinks),
+            noisy=on(w.noisy),
+            flat=on(w.flat),
+            railed=on(w.railed),
+            turns=spans(w.turns),
+            optics=tuple((t + seconds, where) for t, where in w.optics),
+        )
+        self._keys = [(t + seconds, key) for t, key in self._keys]
+
     def read_key(self) -> str | None:
         """The next scripted key that is due, the way the CLI's key reader hands keys over."""
         if self.t0 is None or not self._keys or self._keys[0][0] > self.now():
@@ -236,7 +275,6 @@ class _WornAthena(SimulatedAthena):
     def __init__(self, rehearsal: Rehearsal) -> None:
         super().__init__(clock=rehearsal.clock, seed=rehearsal.seed, preset=rehearsal.preset)
         self._rehearsal = rehearsal
-        self._wearer = rehearsal.wearer
         self._device = DeviceInfo(
             name="SimulatedAthena",
             preset=rehearsal.preset,
@@ -246,6 +284,10 @@ class _WornAthena(SimulatedAthena):
         self._shift = 0.0  # this connection's start on the script's timeline
         self._lost_at = np.inf  # ... and when its link dies: the next time the headband goes off
         self._own: dict[StreamKind, np.random.Generator] = {}
+
+    @property
+    def _wearer(self) -> Wearer:
+        return self._rehearsal.wearer  # read each time: the script may be delayed (delay_script)
 
     def start(self) -> None:
         now = self._rehearsal.now()
@@ -283,7 +325,7 @@ class _WornAthena(SimulatedAthena):
             return self._eeg(data, noise, np.rint(rel * spec.sampling_rate).astype(int), t)
         if kind is StreamKind.OPTICS:
             return self._optics(noise, rel, t)
-        return data
+        return self._motion(data, t)
 
     def _eeg(
         self, data: FloatArray, noise: FloatArray, index: np.ndarray, t: FloatArray
@@ -298,13 +340,31 @@ class _WornAthena(SimulatedAthena):
             rows = (t >= start) & (t < end)
             for ear in (names.index("TP9"), names.index("TP10")):
                 data[rows, ear] += CLENCH_UV * noise[rows, ear]
+            for forehead in (names.index("AF7"), names.index("AF8")):
+                data[rows, forehead] += CLENCH_FOREHEAD_UV * noise[rows, forehead]
         for start, end in wearer.blinks:
             phase = (t - start) % 1.0
             rows = (t >= start) & (t < end) & (phase < BLINK_S)
             bump = BLINK_UV * np.sin(np.pi * phase[rows] / BLINK_S)
             for forehead in (names.index("AF7"), names.index("AF8")):
                 data[rows, forehead] += bump
+        for start, end, channel in wearer.noisy:
+            rows, ch = (t >= start) & (t < end), names.index(channel)
+            data[rows, ch] += NOISY_UV * noise[rows, ch]
+        for start, end, channel in wearer.flat:
+            rows, ch = (t >= start) & (t < end), names.index(channel)
+            data[rows, ch] = REST_OFFSET_UV[ch]
+        for start, end, channel in wearer.railed:
+            data[(t >= start) & (t < end), names.index(channel)] = EEG_RANGE_UV[1]
         return np.clip(data, *EEG_RANGE_UV)
+
+    def _motion(self, data: FloatArray, t: FloatArray) -> FloatArray:
+        for start, end in self._wearer.turns:
+            rows = (t >= start) & (t < end)
+            swing = np.sin(2 * np.pi * TURN_HZ * (t[rows] - start))
+            data[rows, _GYRO_Z] += TURN_DPS * swing
+            data[rows, _ACC_X] += TURN_ACC_G * swing
+        return data
 
     def _optics(self, noise: FloatArray, rel: FloatArray, t: FloatArray) -> FloatArray:
         wearer = self._wearer

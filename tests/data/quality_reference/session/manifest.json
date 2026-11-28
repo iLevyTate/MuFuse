@@ -1,0 +1,76 @@
+{
+  "format_version": 1,
+  "session_id": "20270115T080000Z-5f4b",
+  "started_at": 1800000000.0,
+  "ended_at": 1800000048.0,
+  "notes": "",
+  "software_version": "0.1.0",
+  "device": {
+    "name": "SimulatedAthena",
+    "preset": "p1041",
+    "driver": "simulated",
+    "address": null,
+    "firmware": "3.1.19",
+    "extra": {}
+  },
+  "streams": {
+    "eeg": {
+      "file": "eeg.f64",
+      "columns": [
+        "t",
+        "TP9",
+        "AF7",
+        "AF8",
+        "TP10",
+        "AUX1",
+        "AUX2",
+        "AUX3",
+        "AUX4"
+      ],
+      "sampling_rate": 256.0,
+      "units": [
+        "s",
+        "uV",
+        "uV",
+        "uV",
+        "uV",
+        "uV",
+        "uV",
+        "uV",
+        "uV"
+      ]
+    },
+    "motion": {
+      "file": "motion.f64",
+      "columns": [
+        "t",
+        "ACC_X",
+        "ACC_Y",
+        "ACC_Z",
+        "GYRO_X",
+        "GYRO_Y",
+        "GYRO_Z"
+      ],
+      "sampling_rate": 52.0,
+      "units": [
+        "s",
+        "g",
+        "g",
+        "g",
+        "deg/s",
+        "deg/s",
+        "deg/s"
+      ]
+    }
+  },
+  "completeness": {
+    "eeg": {
+      "expected": 12288,
+      "received": 11904
+    },
+    "motion": {
+      "expected": 2496,
+      "received": 2418
+    }
+  }
+}
