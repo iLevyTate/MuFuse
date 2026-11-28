@@ -1,0 +1,14 @@
+{
+ "v": 1,
+ "type": "status",
+ "t": 1700000000.25,
+ "elapsed": 0.25,
+ "link": "streaming",
+ "sensors": {},
+ "coverage": null,
+ "moving": false,
+ "focus": false,
+ "snoozed": false,
+ "line": "waiting for signal",
+ "open_checkin": null
+}

@@ -1,0 +1,20 @@
+{
+ "v": 1,
+ "type": "hello",
+ "session": 1,
+ "recording": "20231114T221320Z-4080",
+ "device": "SimulatedAthena",
+ "question": "What's on your mind?",
+ "answers": [
+  "on task",
+  "planning",
+  "daydreaming",
+  "worry",
+  "stuck on a thought",
+  "memory",
+  "urge",
+  "feeling low",
+  "nothing much",
+  "own words"
+ ]
+}

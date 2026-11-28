@@ -1,0 +1,28 @@
+{
+ "v": 1,
+ "type": "features",
+ "t": 1700000008.0,
+ "values": {
+  "exponent": 1.464426975123207,
+  "theta_share": 0.1637213970073051,
+  "alpha_share": 0.38923562274763734,
+  "beta_share": 0.13689010664346835,
+  "blinks_per_min": null,
+  "hr_bpm": null,
+  "rmssd_ms": null,
+  "alpha_hz": 10.0,
+  "alpha_height": 1.334514443081433,
+  "fit_r2": 0.9008165643690194,
+  "af7_exponent": 1.492825298355571,
+  "af8_exponent": 1.4360286518908432
+ },
+ "z": {
+  "exponent": null,
+  "theta_share": null,
+  "alpha_share": null,
+  "beta_share": null,
+  "blinks_per_min": null,
+  "hr_bpm": null,
+  "rmssd_ms": null
+ }
+}
