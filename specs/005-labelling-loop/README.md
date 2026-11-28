@@ -57,7 +57,7 @@ Flutter strip (decisions 9-11).
     says so and shows the command to start it.
 11. **App tests** run against stored event streams (`flutter test`), in a separate CI job.
 
-Not in 005: the global hotkey and the BLE ring (the strip's mark button and the terminal keys
+Not in 005a/b: the global hotkey (added as 005c, below) and the BLE ring (the strip's mark button and the terminal keys
 stand in), the chat (007), shift detection (006).
 
 ## Constitution Check
@@ -83,4 +83,9 @@ served message format is versioned for a later phone engine.
   the Windows SDK here, so the app has no runtime package; the window is a fixed small size
 - [x] chat panel on the strip for 007 (replies shown as sent, own lines, cloud switch, a "cloud"
   badge on every cloud reply); `hello` now says whether the cloud model is on
+- [x] global hotkey (005c): `mufuse serve --hotkey ctrl+alt+m` (the default; `none` turns it off)
+  marks a moment from any window. Windows only for now (`RegisterHotKey` on a thread of its own,
+  no new dependency); elsewhere serve says so and goes on. A hotkey mark is stored and recorded
+  with source `keyboard`, apart from the strip's `app` marks. A combination another program
+  holds is reported, not fatal.
 - [ ] a week of real use (owner)

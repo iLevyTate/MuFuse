@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import http.client
 import json
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -326,3 +327,79 @@ def test_mufuse_serve_runs_on_the_simulator_and_cleans_up(
     assert "Saved session:" in result.output
     assert not state.exists()  # the token does not outlive the run
     assert (tmp_path / "data" / "mufuse.db").exists()
+
+
+def test_a_hotkey_mark_is_kept_apart_from_the_strips(tmp_path: Path) -> None:
+    engine, clock, _ = _engine(tmp_path)
+    _run(engine, clock, 2.0)
+    engine.command({"type": "mark"})
+    _run(engine, clock, 1.0)
+    engine.mark(source="keyboard")
+    engine.stop()
+    marks = engine.store.marks(engine.session)
+    assert [(m.label, m.source) for m in marks] == [("moment", "app"), ("moment", "keyboard")]
+    assert engine.writer is not None
+    markers = load_session(engine.writer.session_dir).markers
+    assert [(m.kind, m.source) for m in markers] == [("moment", "app"), ("moment", "keyboard")]
+
+
+def test_serve_marks_on_the_hotkey_and_releases_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from typer.testing import CliRunner
+
+    from mufuse.cli import app
+    from mufuse.companion import hotkey
+
+    seen: list[str] = []
+
+    class Pressed:  # presses once as soon as it is registered
+        def __init__(self, combo: hotkey.Combo, on_press: Callable[[], None]) -> None:
+            self.combo, self.on_press = combo, on_press
+
+        def start(self) -> str | None:
+            seen.append(f"start {self.combo.text}")
+            self.on_press()
+            return None
+
+        def stop(self) -> None:
+            seen.append("stop")
+
+    monkeypatch.setattr(hotkey, "Hotkey", Pressed)
+    monkeypatch.setattr("mufuse.companion.serve.serve_file", lambda: tmp_path / "serve.json")
+    monkeypatch.setattr("mufuse.companion.store.default_path", lambda: tmp_path / "mufuse.db")
+    args = [
+        "serve",
+        "--source",
+        "sim",
+        "--duration",
+        "2",
+        "--no-record",
+        "--hotkey",
+        "ctrl+shift+k",
+    ]
+    result = CliRunner().invoke(app, args)
+    assert result.exit_code == 0, result.output
+    assert "ctrl+shift+k marks a moment from any window." in result.output
+    assert "Marked at 00:00 (ctrl+shift+k)" in result.output
+    assert seen == ["start ctrl+shift+k", "stop"]
+    store = Store(tmp_path / "mufuse.db")
+    ((session, _, _),) = store.sessions()
+    assert [m.source for m in store.marks(session)] == ["keyboard"]
+    store.close()
+
+
+@pytest.mark.parametrize(("spec", "code"), [("ctrl+m+n", 2), ("none", 0)])
+def test_a_wrong_hotkey_stops_serve_and_none_turns_it_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, spec: str, code: int
+) -> None:
+    from typer.testing import CliRunner
+
+    from mufuse.cli import app
+
+    monkeypatch.setattr("mufuse.companion.serve.serve_file", lambda: tmp_path / "serve.json")
+    monkeypatch.setattr("mufuse.companion.store.default_path", lambda: tmp_path / "mufuse.db")
+    args = ["serve", "--source", "sim", "--duration", "1", "--no-record", "--hotkey", spec]
+    result = CliRunner().invoke(app, args)
+    assert result.exit_code == code, result.output
+    assert "marks a moment" not in result.output

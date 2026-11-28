@@ -50,7 +50,7 @@ MUFUSE_SIM_WEARER=resting uv run mufuse record --source sim --duration 120   # d
   source, marks), `scheduler.py` (random check-ins ≥ 30%, 15 min spacing, quiet times),
   `describe.py` (the baseline line, words for the signal only), `serve.py` (`Engine` + `Server`:
   127.0.0.1, per-run token in `serve.json`, SSE `/events`, `POST /command`; message examples in
-  `tests/data/serve_messages/`).
+  `tests/data/serve_messages/`), `hotkey.py` (global mark key for serve, Windows only, 005c).
 - `observe/` — feature 006: `observations.py` (15 s median z ≥ 2 starts, < 1 ends), `interpreters.py`
   (TOML manifests in `manifests/`, first-party `REGISTRY`, `attention_drift`), `evaluate.py` (random
   check-ins only, AUC, permutation shuffled within days, fixed looks), `ledger.py` (standing, early

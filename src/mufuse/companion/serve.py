@@ -40,7 +40,7 @@ from mufuse.observe.interpreters import Interpreter, load_all, window
 from mufuse.observe.ledger import counts, review
 from mufuse.observe.observations import ObservationDetector, ObservationEvent
 from mufuse.quality.answer import FOREHEAD, QualityAnswer
-from mufuse.recording.format import Marker
+from mufuse.recording.format import Marker, MarkerSource
 from mufuse.recording.writer import SessionWriter
 
 VERSION = 1
@@ -414,12 +414,18 @@ class Engine:
                 self._ask(ask)
             return ask is not None
 
-    def _mark_recording(self, t: float, label: str, source: str = "system") -> None:
+    def _mark_recording(self, t: float, label: str, source: MarkerSource = "system") -> None:
         if self.writer is not None:
-            if source == "app":
-                self.writer.add_marker(Marker(t=t, kind="moment", label=label, source="app"))
-            else:
-                self.writer.add_marker(Marker(t=t, kind="system", label=label, source="system"))
+            kind = "system" if source == "system" else "moment"
+            self.writer.add_marker(Marker(t=t, kind=kind, label=label, source=source))
+
+    def mark(self, label: str = "moment", source: MarkerSource = "app") -> float:
+        """A moment the person marked: from the strip (`app`) or the global hotkey (`keyboard`)."""
+        with self._lock:
+            now = self.clock()
+            self.store.mark(self.session, t=now, label=label, source=source)
+            self._mark_recording(now, label, source=source)
+            return now
 
     # Commands ----------------------------------------------------------------------------------
 
@@ -431,10 +437,7 @@ class Engine:
         with self._lock:
             now = self.clock()
             if kind == "mark":
-                label = str(body.get("label") or "moment")
-                self.store.mark(self.session, t=now, label=label, source="app")
-                self._mark_recording(now, label, source="app")
-                return self._message("ok", t=now)
+                return self._message("ok", t=self.mark(str(body.get("label") or "moment")))
             if kind == "checkin":
                 if self._open is not None:
                     return self._message("error", error="a check-in is already open")
