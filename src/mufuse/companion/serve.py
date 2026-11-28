@@ -16,7 +16,7 @@ import queue
 import secrets
 import threading
 from collections import deque
-from collections.abc import Callable, Generator, Mapping
+from collections.abc import Callable, Generator, Mapping, Sequence
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -28,6 +28,9 @@ from platformdirs import user_state_path
 
 from mufuse.acquisition.source import HeadbandSource
 from mufuse.acquisition.supervisor import StreamSupervisor
+from mufuse.chat.models import Claude, Model, Ollama
+from mufuse.chat.session import ChatSession
+from mufuse.chat.summary import Summary
 from mufuse.companion.describe import baseline_line
 from mufuse.companion.scheduler import MEAN_WAIT_S, SPACING_S, Ask, Conditions, Scheduler
 from mufuse.companion.store import Store
@@ -109,6 +112,7 @@ class Engine:
     hub: Hub = field(default_factory=Hub)
     mean_wait_s: float = MEAN_WAIT_S
     spacing_s: float = SPACING_S
+    models: Callable[[bool], Sequence[Model]] | None = None  # cloud on? -> models to try, in order
 
     def __post_init__(self) -> None:
         self._lock = threading.RLock()  # steps run on the main thread, commands on server threads
@@ -120,9 +124,11 @@ class Engine:
         self._open: _Open | None = None
         self._last_status = -np.inf
         self._observer = ObservationDetector()
+        self._observed_n = 0
         self._interpreters: list[Interpreter] = load_all()
         self._recent: deque[FeatureFrame] = deque()
         self._last_insight = -np.inf
+        self._chat = ChatSession(self._chat_models, clock=self.clock)
         self.writer: SessionWriter | None = None
         self.session = 0
         self.started = 0.0
@@ -148,12 +154,22 @@ class Engine:
         for interpreter in self._interpreters:
             review(self.store, interpreter)  # a look reached since the last run is judged now
         self.hub.publish(self.hello())
+        self._say(
+            "I'm here. Once there is a minute of good signal, I'll describe how it compares"
+            " with your own baseline. Ask me anything about it."
+        )
 
     def stop(self) -> None:
         with self._lock:
             now = self.clock()
             if self._open is not None:
                 self._close(now, answered=False)
+            rows = self.store.checkins(self.session)
+            answered = sum(r.answer is not None for r in rows)
+            self._say(
+                f"Session ended: {answered} of {len(rows)} check-ins answered,"
+                f" {self._observed_n} observations. Thanks."
+            )
             self.store.end_session(self.session, t=now)
             if self.writer is not None:
                 if self._sup.open_gap is not None:
@@ -163,6 +179,26 @@ class Engine:
             self.hub.close()
         with contextlib.suppress(Exception):
             self._sup.stop()
+
+    def _chat_models(self) -> Sequence[Model]:
+        cloud = self.store.setting("cloud") == "on"
+        if self.models is not None:
+            return self.models(cloud)
+        return [Claude(), Ollama()] if cloud else [Ollama()]
+
+    def _say(self, text: str) -> None:
+        """The chat speaks first (007 decision 6): templates only, never a model."""
+        self.hub.publish(
+            self._message(
+                "chat",
+                role="assistant",
+                text=text,
+                source="template",
+                model=None,
+                cloud=False,
+                t=self.clock(),
+            )
+        )
 
     @property
     def _recording(self) -> str | None:
@@ -227,7 +263,15 @@ class Engine:
             )
         )
         if event.kind == "start":
-            ask = self._scheduler.shift(self.clock(), self.conditions())
+            self._observed_n += 1
+            now = self.clock()
+            if not self._scheduler.snoozed(now):
+                good = self.summary().forehead_good
+                self._say(
+                    f"{event.text[0].upper()}{event.text[1:]}."
+                    f" Signal is good on {good} of 2 forehead sensors."
+                )
+            ask = self._scheduler.shift(now, self.conditions())
             if ask is not None:
                 self._ask(ask)
 
@@ -258,6 +302,25 @@ class Engine:
                 )
             )
             return
+
+    def summary(self) -> Summary:
+        """What the chat may know, made by code (007 decision 4)."""
+        with self._lock:
+            now = self.clock()
+            answer = self._answer
+            good = 0 if answer is None else sum(answer.state(s).state == "good" for s in FOREHEAD)
+            z = {} if self._frame is None else dict(self._frame.z)
+            fix = self._fix()
+            rows = [r for r in self.store.checkins(self.session) if r.answer is not None]
+            return Summary(
+                forehead_good=good,
+                fix=fix,
+                line=baseline_line(z, fix=fix),
+                observations=tuple(
+                    (e.text, (now - e.since) / 60.0) for e in self._observer.active.values()
+                ),
+                last_answer=rows[-1].answer if rows else None,
+            )
 
     def conditions(self) -> Conditions:
         good = self._answer is not None and any(
@@ -355,6 +418,8 @@ class Engine:
     def command(self, body: Mapping[str, Any]) -> Message:
         """One command from the app. The reply says `ok` or names what was wrong."""
         kind = body.get("type")
+        if kind == "ask":  # outside the lock: a slow model never holds up the headband loop
+            return self._ask_cmd(body)
         with self._lock:
             now = self.clock()
             if kind == "mark":
@@ -372,10 +437,31 @@ class Engine:
             if kind == "snooze":
                 self._scheduler.snooze(now)
                 return self._message("ok", t=now)
+            if kind == "cloud":
+                on = bool(body.get("on"))
+                self.store.set_setting("cloud", "on" if on else "off")
+                return self._message("ok", t=now, cloud=on)
             if kind == "focus":
                 self._focus = bool(body.get("on"))
                 return self._message("ok", t=now)
             return self._message("error", error=f"unknown command {kind!r}")
+
+    def _ask_cmd(self, body: Mapping[str, Any]) -> Message:
+        text = str(body.get("text") or "").strip()
+        if not text:
+            return self._message("error", error="nothing asked")
+        reply = self._chat.ask(text, self.summary())
+        message = self._message(
+            "chat",
+            role="assistant",
+            text=reply.text,
+            source=reply.source,
+            model=reply.model,
+            cloud=reply.cloud,
+            t=self.clock(),
+        )
+        self.hub.publish(message)
+        return {**message, "type": "ok", "reply": reply.text}
 
     def _answer_cmd(self, body: Mapping[str, Any], now: float) -> Message:
         if self._open is None or body.get("id") != self._open.id:
@@ -388,6 +474,7 @@ class Engine:
         self.store.answer(self._open.id, t=now, answer=str(answer), text=said)
         self._mark_recording(now, f"answer:{self._open.id}:{answer}")
         self._close(now, answered=True)
+        self._say(f"Noted: {answer}.")
         return self._message("ok", t=now)
 
 
