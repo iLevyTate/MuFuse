@@ -15,6 +15,7 @@ import os
 import queue
 import secrets
 import threading
+from collections import deque
 from collections.abc import Callable, Generator, Mapping
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -31,6 +32,9 @@ from mufuse.companion.describe import baseline_line
 from mufuse.companion.scheduler import MEAN_WAIT_S, SPACING_S, Ask, Conditions, Scheduler
 from mufuse.companion.store import Store
 from mufuse.features.engine import FeatureEngine, FeatureFrame
+from mufuse.observe.interpreters import Interpreter, load_all, window
+from mufuse.observe.ledger import counts, review
+from mufuse.observe.observations import ObservationDetector, ObservationEvent
 from mufuse.quality.answer import FOREHEAD, QualityAnswer
 from mufuse.recording.format import Marker
 from mufuse.recording.writer import SessionWriter
@@ -38,6 +42,9 @@ from mufuse.recording.writer import SessionWriter
 VERSION = 1
 QUESTION = "What's on your mind?"
 STATUS_EVERY_S = 1.0
+RECENT_S = 120.0  # feature frames kept for the interpreters' windows
+INSIGHT_EVERY_S = 15 * 60.0  # at most one insight this often
+AFTER_INSIGHT_S = 10 * 60.0  # check-ins this soon after an insight are not evaluated
 HEARTBEAT_S = 15.0
 
 Message = dict[str, Any]
@@ -112,6 +119,10 @@ class Engine:
         self._focus = False
         self._open: _Open | None = None
         self._last_status = -np.inf
+        self._observer = ObservationDetector()
+        self._interpreters: list[Interpreter] = load_all()
+        self._recent: deque[FeatureFrame] = deque()
+        self._last_insight = -np.inf
         self.writer: SessionWriter | None = None
         self.session = 0
         self.started = 0.0
@@ -134,6 +145,8 @@ class Engine:
         self._scheduler = Scheduler(
             self.rng, start_t=self.started, mean_wait_s=self.mean_wait_s, spacing_s=self.spacing_s
         )
+        for interpreter in self._interpreters:
+            review(self.store, interpreter)  # a look reached since the last run is judged now
         self.hub.publish(self.hello())
 
     def stop(self) -> None:
@@ -178,10 +191,7 @@ class Engine:
             if self.writer is not None:
                 self.writer.write(chunks)
             for frame in self._features.feed(chunks):
-                self._frame = frame
-                self.hub.publish(
-                    self._message("features", t=frame.t, values=dict(frame.values), z=dict(frame.z))
-                )
+                self._on_frame(frame)
             self._answer = self._features.latest_answer or self._answer
             if self._open is not None and self._scheduler.expired(now):
                 self._close(now, answered=False)
@@ -191,6 +201,63 @@ class Engine:
             if now - self._last_status >= STATUS_EVERY_S:
                 self._last_status = now
                 self.hub.publish(self.status())
+
+    def _on_frame(self, frame: FeatureFrame) -> None:
+        self._frame = frame
+        self._recent.append(frame)
+        while self._recent and self._recent[0].t <= frame.t - RECENT_S:
+            self._recent.popleft()
+        self.hub.publish(
+            self._message("features", t=frame.t, values=dict(frame.values), z=dict(frame.z))
+        )
+        for event in self._observer.add(frame):
+            self._observed(event)
+        self._maybe_insight(frame.t)
+
+    def _observed(self, event: ObservationEvent) -> None:
+        self.hub.publish(
+            self._message(
+                "observation",
+                state=event.kind,
+                series=event.series,
+                direction=event.direction,
+                since=event.since,
+                t=event.t,
+                text=event.text,
+            )
+        )
+        if event.kind == "start":
+            ask = self._scheduler.shift(self.clock(), self.conditions())
+            if ask is not None:
+                self._ask(ask)
+
+    def _maybe_insight(self, t: float) -> None:
+        """An interpreter's statement, only when promoted or switched on for early feedback."""
+        if self._open is not None or t - self._last_insight < INSIGHT_EVERY_S:
+            return
+        for interpreter in self._interpreters:
+            m = interpreter.manifest
+            standing = self.store.interpreter(m.id)
+            promoted = standing.state == "promoted"
+            if not (promoted or standing.early):
+                continue
+            score = interpreter.score(window(list(self._recent), t, m.window_s))
+            if score is None or score < m.threshold:
+                continue
+            hits, fired = counts(self.store, interpreter)
+            self._last_insight = t
+            self.hub.publish(
+                self._message(
+                    "insight",
+                    interpreter=m.id,
+                    title=m.title,
+                    tier=m.tier,
+                    early=not promoted,
+                    t=t,
+                    text=m.say(hits=hits, fired=fired, early=not promoted),
+                )
+            )
+            return
 
     def conditions(self) -> Conditions:
         good = self._answer is not None and any(
@@ -237,6 +304,18 @@ class Engine:
         checkin = self.store.ask(self.session, t=ask.t, source=ask.source, order=order)
         self._open = _Open(ask, checkin, order)
         self._mark_recording(ask.t, f"checkin:{ask.source}:{checkin}")
+        frames = list(self._recent)
+        for interpreter in self._interpreters:  # shadow mode: every score is kept (006 decision 5)
+            m = interpreter.manifest
+            score = interpreter.score(window(frames, ask.t, m.window_s))
+            self.store.add_score(
+                checkin,
+                interpreter=m.id,
+                version=m.version,
+                score=score,
+                fired=score is not None and score >= m.threshold,
+                after_insight=ask.t - self._last_insight < AFTER_INSIGHT_S,
+            )
         self.hub.publish(
             self._message(
                 "checkin",

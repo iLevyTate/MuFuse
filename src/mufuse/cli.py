@@ -647,6 +647,72 @@ def _mmss(seconds: float) -> str:
     return f"{whole // 60:02d}:{whole % 60:02d}"
 
 
+# mufuse interpreters --------------------------------------------------------------------------
+
+interpreters_app = typer.Typer(help="Interpreters: shadow mode, hit rates, early feedback (006).")
+app.add_typer(interpreters_app, name="interpreters")
+
+
+def _pct(x: float | None) -> str:
+    return "-" if x is None else f"{100 * x:.0f}%"
+
+
+@interpreters_app.callback(invoke_without_command=True)
+def interpreters_list(ctx: typer.Context) -> None:
+    """Each interpreter's standing on your own random check-ins."""
+    if ctx.invoked_subcommand is not None:
+        return
+    from mufuse.companion.store import Store
+    from mufuse.observe.interpreters import load_all
+    from mufuse.observe.ledger import review
+
+    store = Store()
+    try:
+        for interpreter in load_all():
+            standing = review(store, interpreter)
+            m, e = interpreter.manifest, standing.verdict.evaluation
+            early = "on" if standing.state.early else "off"
+            auc = "-" if e.auc is None else f"{e.auc:.2f}"
+            p = "-" if e.p is None else f"{e.p:.3f}"
+            lines = [
+                f"{m.id} v{m.version} ({m.title}, {m.tier}): {standing.state.state},"
+                f" early feedback {early}",
+                f"  random answers scored {e.n}, next look at {standing.next_look}",
+                f"  base rate {_pct(e.base_rate)}  hit rate {_pct(e.hit_rate)}"
+                f" (fired {e.fired})  AUC {auc}  p {p}",
+            ]
+            if e.n < m.looks[0]:
+                lines.append("  not yet known: it is judged at its looks only")
+            for line in lines:
+                console.print(line, markup=False, highlight=False)
+    finally:
+        store.close()
+
+
+@interpreters_app.command("feedback")
+def interpreters_feedback(
+    state: Annotated[str, typer.Argument(help="on or off")],
+    id_: Annotated[
+        str | None, typer.Option("--id", help="One interpreter; all when left out")
+    ] = None,
+) -> None:
+    """Early feedback: unproven interpreters speak, tagged "speculative · unproven for you"."""
+    from mufuse.companion.store import Store
+    from mufuse.observe.interpreters import REGISTRY
+    from mufuse.observe.ledger import set_early
+
+    if state not in ("on", "off") or (id_ is not None and id_ not in REGISTRY):
+        console.print(f"Use on or off, and --id one of: {', '.join(REGISTRY)}", markup=False)
+        raise typer.Exit(EXIT_BAD_ARGS)
+    store = Store()
+    try:
+        for name in [id_] if id_ else list(REGISTRY):
+            set_early(store, name, state == "on")
+            console.print(f"{name}: early feedback {state}", markup=False, highlight=False)
+    finally:
+        store.close()
+
+
 # mufuse quality ------------------------------------------------------------------------------
 
 quality_app = typer.Typer(no_args_is_help=True, help="Signal quality: labelled session and score.")

@@ -1,0 +1,10 @@
+{
+ "v": 1,
+ "type": "insight",
+ "interpreter": "attention_drift",
+ "title": "Attention drift",
+ "tier": "speculative",
+ "early": true,
+ "t": 1700000060.0,
+ "text": "Blink rate and alpha are up on your baseline. What was going on just then? (speculative · unproven for you)"
+}
