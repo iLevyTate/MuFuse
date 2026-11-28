@@ -60,6 +60,9 @@ MUFUSE_SIM_WEARER=resting uv run mufuse record --source sim --duration 120   # d
 - `journal/` — feature 008: `timeline.py`, `patterns.py` (random check-ins only; n ≥ 3; every pattern
   shows n, effect in points and "hypothesis"), `calendar.py` (stdlib .ics, meetings), `review.py`
   (static escaped HTML in the user data folder).
+- `app/` — feature 005b: the Flutter desk strip; talks only to `mufuse serve` (serve.json, SSE,
+  `POST /command`); pure-Dart core in `app/lib/src/`; `cd app && flutter test` replays
+  `tests/data/serve_messages/`.
 - `cli.py` — `devices / stream / record / inspect / features / serve / chat / timeline / journal /
   calendar / review / interpreters / quality`; `banner.py` — header shown only on a TTY.
 

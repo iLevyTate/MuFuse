@@ -14,6 +14,7 @@ import json
 import os
 import queue
 import secrets
+import sys
 import threading
 from collections import deque
 from collections.abc import Callable, Generator, Mapping, Sequence
@@ -49,6 +50,7 @@ RECENT_S = 120.0  # feature frames kept for the interpreters' windows
 INSIGHT_EVERY_S = 15 * 60.0  # at most one insight this often
 AFTER_INSIGHT_S = 10 * 60.0  # check-ins this soon after an insight are not evaluated
 HEARTBEAT_S = 15.0
+MAX_BODY = 64 * 1024  # a command is a few hundred bytes
 
 Message = dict[str, Any]
 
@@ -216,6 +218,7 @@ class Engine:
             device=source.device.name if source else None,
             question=QUESTION,
             answers=list(self.store.answers()),
+            cloud=self.store.setting("cloud") == "on",  # so the app's toggle starts right
         )
 
     # One step ----------------------------------------------------------------------------------
@@ -494,13 +497,22 @@ class Engine:
 # The HTTP layer ------------------------------------------------------------------------------
 
 
+class _QuietHTTPServer(ThreadingHTTPServer):
+    """An app that goes away mid-connection is normal: no traceback for it on the console."""
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        if isinstance(sys.exc_info()[1], ConnectionError):
+            return
+        super().handle_error(request, client_address)
+
+
 class Server:
     """The engine on 127.0.0.1, on a free port, behind a token made fresh for this run."""
 
     def __init__(self, engine: Engine, *, port: int = 0, token: str | None = None) -> None:
         self.engine = engine
         self.token = token or secrets.token_urlsafe(24)
-        self._httpd = ThreadingHTTPServer(("127.0.0.1", port), _handler(self))
+        self._httpd = _QuietHTTPServer(("127.0.0.1", port), _handler(self))
         self._httpd.daemon_threads = True
         self.port = int(self._httpd.server_address[1])
         self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
@@ -569,9 +581,9 @@ def _handler(server: Server) -> type[BaseHTTPRequestHandler]:
                 self._reply(404, {"v": VERSION, "type": "error", "error": "not found"})
                 return
             try:
-                length = int(self.headers.get("Content-Length", "0"))
-                body = json.loads(self.rfile.read(length) or b"{}")
+                body = json.loads(self._body() or b"{}")
             except (ValueError, json.JSONDecodeError):
+                self.close_connection = True  # what is left of the body is not a next request
                 self._reply(400, {"v": VERSION, "type": "error", "error": "not JSON"})
                 return
             if not isinstance(body, dict):
@@ -579,6 +591,21 @@ def _handler(server: Server) -> type[BaseHTTPRequestHandler]:
                 return
             reply = server.engine.command(body)  # pyright: ignore[reportUnknownArgumentType]
             self._reply(200 if reply["type"] == "ok" else 400, reply)
+
+        def _body(self) -> bytes:
+            """The request body, sent with a length or in chunks (as Dart's HttpClient may)."""
+            if "chunked" not in self.headers.get("Transfer-Encoding", "").lower():
+                return self.rfile.read(int(self.headers.get("Content-Length", "0")))
+            out = b""
+            while True:
+                size = int(self.rfile.readline(64).split(b";")[0].strip() or b"0", 16)
+                if size == 0:
+                    self.rfile.readline(64)  # the empty line that ends the body
+                    return out
+                if len(out) + size > MAX_BODY:
+                    raise ValueError("body too long")
+                out += self.rfile.read(size)
+                self.rfile.readline(64)  # the line end after each chunk
 
         def _events(self) -> None:
             self.send_response(200)

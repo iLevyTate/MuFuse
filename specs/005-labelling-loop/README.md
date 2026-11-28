@@ -78,5 +78,9 @@ served message format is versioned for a later phone engine.
 - [x] scheduler with injected clock (005a)
 - [x] describe line (005a)
 - [x] `mufuse serve` with stored message examples (005a)
-- [ ] Flutter strip and its CI job (005b)
+- [x] Flutter strip and its CI job (005b). Always-on-top comes from each platform's runner:
+  `window_manager` 0.6 (MIT) was tried and its native core (cnativeapi) does not compile against
+  the Windows SDK here, so the app has no runtime package; the window is a fixed small size
+- [x] chat panel on the strip for 007 (replies shown as sent, own lines, cloud switch, a "cloud"
+  badge on every cloud reply); `hello` now says whether the cloud model is on
 - [ ] a week of real use (owner)

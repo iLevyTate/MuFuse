@@ -253,6 +253,36 @@ def test_commands_go_through_http(served: Server) -> None:
     assert _request(served, "GET", "/nowhere")[0] == 404
 
 
+def test_an_app_that_goes_away_leaves_no_traceback(
+    served: Server, capsys: pytest.CaptureFixture[str]
+) -> None:
+    httpd = served._httpd  # pyright: ignore[reportPrivateUsage]
+    try:
+        raise ConnectionResetError("the app closed")
+    except ConnectionResetError:
+        httpd.handle_error(None, ("127.0.0.1", 1))
+    assert capsys.readouterr().err == ""
+
+
+def test_a_chunked_command_is_read_whole_and_the_connection_stays_usable(served: Server) -> None:
+    conn = http.client.HTTPConnection("127.0.0.1", served.port, timeout=5)
+    for label in ("one", "two"):  # the second request proves no chunk was left on the line
+        body = json.dumps({"type": "mark", "label": label}).encode()
+        conn.putrequest("POST", "/command", skip_host=True)
+        conn.putheader("Host", f"127.0.0.1:{served.port}")
+        conn.putheader("Authorization", f"Bearer {served.token}")
+        conn.putheader("Transfer-Encoding", "chunked")
+        conn.endheaders()
+        half = len(body) // 2
+        pieces = (body[:half], body[half:])
+        chunks = b"".join(b"%x\r\n%s\r\n" % (len(p), p) for p in pieces)
+        conn.send(chunks + b"0\r\n\r\n")
+        response = conn.getresponse()
+        assert (response.status, json.loads(response.read())["type"]) == (200, "ok")
+    conn.close()
+    assert [m.label for m in served.engine.store.marks(served.engine.session)] == ["one", "two"]
+
+
 def test_events_stream_starts_with_hello_and_status(served: Server) -> None:
     conn = http.client.HTTPConnection("127.0.0.1", served.port, timeout=5)
     conn.request(
