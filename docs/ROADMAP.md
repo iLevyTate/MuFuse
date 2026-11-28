@@ -1,6 +1,6 @@
 # MuFuse Roadmap
 
-Each milestone is one Spec Kit feature (`specs/NNN-name/`), built test-first, with an exit
+Each milestone is one feature with a design note (`specs/NNN-name/README.md`), built test-first, with an exit
 **quality gate** that must pass before the next milestone depends on it.
 Rules: `.specify/memory/constitution.md`. Evidence: `reports/Muse EEG self awareness research.md`.
 Experience design: `docs/design/2026-11-26-companion-experience.md`.

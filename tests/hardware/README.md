@@ -178,7 +178,11 @@ One guided session of 9.5 minutes, from one command. The Muse app must be closed
 uv run mufuse quality label --source athena
 ```
 
-The screen tells you each step and counts it ("Blink 7 of 20"):
+It starts with a pre-flight check: fit the headband until AF7 and AF8 (forehead) read good; the
+session then starts by itself. If they are not good after 60 s, press `s` to start anyway or `q` to
+stop. The ear sensors are only noted (issue #12). What was out is printed and kept in the recording.
+The end of eyes-closed is a tone from the sound card (Windows, macOS, Linux), not only the terminal
+bell: check your volume. Then the screen tells you each step and counts it ("Blink 7 of 20"):
 
 | Time | Block |
 |---|---|

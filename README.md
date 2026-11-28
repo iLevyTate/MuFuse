@@ -53,7 +53,7 @@ marks find, and what they do not find yet, is in [`docs/KNOWN-ISSUES.md`](docs/K
 | `mufuse stream` | Live signal view with contact, coverage, blinks, muscle activity and head movement (`--source sim` works without a headband) |
 | `mufuse record` | Record a session with keyboard markers |
 | `mufuse inspect` | Summarize a recorded session, ending with its signal quality |
-| `mufuse quality label` | Record the guided 9.5-minute labelled session (cued blinks, jaw clenches, head turns, sensor lifts) and score it |
+| `mufuse quality label` | Check the fit, then record the guided 9.5-minute labelled session (cued blinks, jaw clenches, head turns, sensor lifts) and score it |
 | `mufuse quality score` | Score a labelled recording, or the public Muse 2 set with `--public DIR` |
 | `python scripts/hw_acceptance.py` | Every hardware check of the headband in one guided sitting (`--rehearse` plays it on the simulator) |
 
@@ -128,8 +128,9 @@ uv run pytest -m "not hardware"       # CI suite, no headband needed
 uv run pytest -m hardware -s          # with the headband on (see tests/hardware/README.md)
 ```
 
-Features are built with [Spec Kit](https://github.com/github/spec-kit) (`/speckit-specify` →
-`/speckit-plan` → `/speckit-tasks` → `/speckit-implement`), test-first, one branch per feature.
+Each feature is planned in one design note (`specs/NNN-name/README.md`) and built test-first,
+one branch per feature, merged when CI is green. The first two features used
+[Spec Kit](https://github.com/github/spec-kit) in full; it stays available for the risky ones.
 
 ---
 

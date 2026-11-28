@@ -1,6 +1,14 @@
 <!--
 Sync Impact Report
-- Version change: 1.0.0 → 1.1.0 (MINOR: Principle V materially expanded)
+- Version change: 1.1.0 → 1.2.0 (MINOR: Development Workflow section materially changed)
+- Workflow: a feature is planned in one design note (`specs/NNN-name/README.md`) instead of the
+  full Spec Kit chain; Spec Kit stays available and is advised for safety-critical features.
+- Rationale: the full chain (spec, plan, research, data model, contracts, tasks, analyze) cost
+  more than it caught on a one-person research rig. What guards quality is kept unchanged:
+  test-first, CI, coverage, golden files, versioned signal code and each feature's exit gate.
+- Principles changed: none. Templates requiring updates: none. Specs affected: 001 and 002 keep
+  their Spec Kit files; 003 onwards use design notes.
+- Earlier: 1.0.0 → 1.1.0 (2026-11-26, MINOR: Principle V gains opt-in early feedback)
 - Principles changed: V gains opt-in early feedback. An interpreter still in shadow mode may
   be surfaced when the user switches early feedback on, always tagged as unproven.
 - Rationale: the user wants the companion to speak early and be refined in use. Descriptions
@@ -109,14 +117,17 @@ labels create nocebo effects and probe-wording bias.
 
 ## Development Workflow & Quality Gates
 
-- Each feature follows Spec Kit: specify → (clarify) → plan → tasks → (analyze) → implement,
-  on its own numbered branch.
+- Each feature is planned in one design note, `specs/NNN-name/README.md`: goal, what it
+  delivers, its exit gate, the decisions and defaults taken, open questions, and a done list.
+  It is built test-first on its own numbered branch and merged by pull request when CI is green.
+- The full Spec Kit chain (specify → plan → tasks → implement) is optional, and advised where a
+  wrong output can harm a person (for example the crisis path and the output filter of 007).
 - Python tooling: uv (env/lock), ruff (lint + format), pyright (types, strict on `src/`),
   pytest (+ coverage ≥ 80% on non-hardware modules), pre-commit hooks.
 - CI (GitHub Actions) runs lint, types, and tests on every push and PR using synthetic data.
 - Golden recordings live in `tests/data/` (small) or are fetched by checksum (large); never
   commit personal recordings to the public repo.
-- Every plan MUST include a Constitution Check against Principles I–IX.
+- Every design note MUST include a Constitution Check against Principles I–IX.
 
 ## Governance
 
@@ -124,7 +135,7 @@ labels create nocebo effects and probe-wording bias.
   file, states the semantic version bump and rationale, and notes impact on templates/specs.
 - Versioning: MAJOR = principle removed/redefined; MINOR = principle/section added or
   materially expanded; PATCH = clarifications.
-- Reviews and `/speckit-analyze` runs MUST verify compliance; violations require an explicit,
-  documented justification in the plan's Complexity Tracking section.
+- Reviews MUST verify compliance; violations require an explicit, documented justification
+  in the design note.
 
-**Version**: 1.1.0 | **Ratified**: 2026-11-25 | **Last Amended**: 2026-11-26
+**Version**: 1.2.0 | **Ratified**: 2026-11-25 | **Last Amended**: 2026-11-27

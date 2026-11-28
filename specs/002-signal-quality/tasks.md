@@ -318,9 +318,15 @@ the number found, and pass or fail against 90%.
   `uv run mufuse quality label --source athena` (guide: `tests/hardware/README.md`). It scores SC-001, SC-002,
   SC-004 and SC-005; `uv run mufuse inspect <session>` shows SC-008 (each stream at least 99.5% complete). A fail
   is reported as a fail; the 90% limit, P0 and H8 are not loosened
-- [ ] T062 Tick the finished tasks in `specs/002-signal-quality/tasks.md`, then open the pull request to `main`
+- [X] T062 Tick the finished tasks in `specs/002-signal-quality/tasks.md`, then open the pull request to `main`
   with the score report's numbers (the report holds numbers only) and the public set's score or "not scored";
-  merge only when CI is green on ubuntu and windows
+  merge only when CI is green on ubuntu and windows. **Merged before T061 at the user's word (2026-11-27):** the
+  gate sitting is still to run and is not a show stopper for the features after 002; its result is added to
+  `research.md` when it is in
+- [X] T063 Added after the tuning sitting: the end-of-eyes-closed tone plays on any computer (`src/mufuse/sound.py`:
+  winsound on Windows, afplay on macOS, paplay / pw-play / aplay on Linux), and `quality label` checks the fit
+  first (`src/mufuse/preflight.py`): it starts by itself once AF7 and AF8 read good and motion flows, and after
+  60 s the wearer may start anyway (`s`) or stop (`q`); the ears are noted only; `--no-check` skips it
 
 ---
 
