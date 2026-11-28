@@ -69,8 +69,12 @@ MUFUSE_SIM_WEARER=resting uv run mufuse record --source sim --duration 120   # d
   estimated distances outer 3 cm / inner 1 cm, `FNIRS_VERSION`), `pipeline.py` (glare and moving
   seconds left out, 0.01-0.2 Hz zero-phase band-pass per piece, SQI, optional short-channel
   regression), `protocol.py` (guided validation, `f:` cues, scorer on outer detectors).
+- `exercises/` — feature 009: `breathe.py` (paced-breathing guide, per-phase beat-interval swing as
+  the primary measure, RMSSD experimental), `library.py` + `scripts/*.toml` (exercise scripts);
+  the simulator's `Wearer.rsa` puts breathing into the pulse.
 - `cli.py` — `devices / stream / record / inspect / features / serve / chat / timeline / journal /
-  calendar / review / interpreters / quality / fnirs`; `banner.py` — header shown only on a TTY.
+  calendar / review / interpreters / breathe / exercise / quality / fnirs`; `banner.py` — header
+  shown only on a TTY.
 
 ## Gotchas
 - Only one device can connect to the headband; the phone Muse app must be closed.

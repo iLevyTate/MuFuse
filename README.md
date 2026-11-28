@@ -60,6 +60,8 @@ marks find, and what they do not find yet, is in [`docs/KNOWN-ISSUES.md`](docs/K
 | `mufuse chat` | Ask the running engine what the signal is doing; a local model (Ollama) words the answer, the Claude API only with `--cloud` (summary only, never raw signal; `uv sync --extra cloud`); a fixed filter and crisis path stand in front of every reply |
 | `mufuse interpreters` | Each interpreter's standing on your own random check-ins (shadow or promoted, hit rate against the base rate, AUC, p, next look); `feedback on\|off` switches early feedback, tagged "speculative · unproven for you" |
 | `mufuse fnirs` | **Experimental.** `show <session>`: relative ΔHbO/ΔHbR per optical detector (modified Beer-Lambert, estimated distances, `--csv`, `--short-channel`); `protocol`: the guided 12-minute validation (rest, breath-holds, counting down by 7) with the fit check first, then its score; `score <session>`: score it again |
+| `mufuse breathe` | Paced breathing (6 a minute by default): 2 min quiet, N min paced, 2 min quiet, then the beat-interval swing, heart rate and RMSSD (experimental) per phase, before against during |
+| `mufuse exercise defusion` / `urge` | Four-minute on-screen exercises: stepping back from a thought, watching an urge; `--source` records them too |
 | `mufuse features` | Per-second EEG and pulse features of a recording (aperiodic exponent, alpha peak, band shares, blink rate, heart rate, RMSSD), each against your own baseline; `--csv` writes them out |
 | `python scripts/hw_acceptance.py` | Every hardware check of the headband in one guided sitting (`--rehearse` plays it on the simulator) |
 

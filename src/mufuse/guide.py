@@ -24,6 +24,7 @@ class Cue:
     text: str
     marker: str | None = None
     bell: bool = False  # ring the terminal bell when it comes up (eyes closed cannot read)
+    step: bool = True  # listed in the timeline; False for frequent cues such as breath pacing
 
 
 def action(at: float, text: str, marker: str | None = None, ready: float = READY_S) -> list[Cue]:
@@ -64,7 +65,7 @@ class Guide:
 
     def timeline(self, elapsed: float) -> list[tuple[float, str, StepState]]:
         """The steps (cues other than get-ready countdowns), each marked done/now/next/later."""
-        steps = [c for c in self.cues if not c.text.startswith("Get ready")]
+        steps = [c for c in self.cues if c.step and not c.text.startswith("Get ready")]
         current = max((i for i, c in enumerate(steps) if c.at <= elapsed), default=-1)
         if elapsed >= self.duration:
             current = len(steps)

@@ -170,6 +170,14 @@ at rest and the spread with the jaw clenched, or "not separable" when the two ov
 suggestions only. Nothing in a run changes `src/mufuse/acquisition/signal_check.py`: that is tuned
 in feature 002, in a reviewed commit that cites the run id and is checked with `--rejudge`.
 
+# Hardware sitting: 009 paced breathing
+
+About 9 minutes, the Muse app closed: `uv run mufuse breathe --source athena` (add `--rate` or
+`--minutes` to change the pace). Fit check first, then 2 minutes sitting quietly, 5 minutes
+breathing with the on-screen cues, 2 minutes quietly. It ends with the beat-interval swing
+before and during, and whether it was raised; over several sessions, the share raised is the
+009 gate. Numbers only go into a pull request.
+
 # Hardware sitting: 002 signal quality
 
 One guided session of 9.5 minutes, from one command. The Muse app must be closed.
