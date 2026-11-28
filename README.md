@@ -108,6 +108,8 @@ uv run python scripts/hw_acceptance.py                 # the unit: every hardwar
 uv run mufuse quality label --source athena            # your head: 9.5 min of cues, ends with a score
 uv run mufuse quality score recordings/<session_id>    # score that recording again later
 uv run mufuse features recordings/<session_id> --csv f.csv   # per-second features (003)
+uv run mufuse serve --source sim                         # the engine for the desk strip (005)
+cd app && flutter run -d windows                         # the desk strip, while serve runs
 ```
 
 Without a headband, `scripts/hw_acceptance.py --rehearse` and `mufuse quality label --source sim`

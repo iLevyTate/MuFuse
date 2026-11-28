@@ -253,6 +253,31 @@ def test_commands_go_through_http(served: Server) -> None:
     assert _request(served, "GET", "/nowhere")[0] == 404
 
 
+def test_an_app_that_goes_away_leaves_no_traceback(
+    served: Server, capsys: pytest.CaptureFixture[str]
+) -> None:
+    httpd = served._httpd  # pyright: ignore[reportPrivateUsage]
+    try:
+        raise ConnectionResetError("the app closed")
+    except ConnectionResetError:
+        httpd.handle_error(None, ("127.0.0.1", 1))
+    assert capsys.readouterr().err == ""
+
+
+def test_a_chunked_command_is_refused_not_misread(served: Server) -> None:
+    conn = http.client.HTTPConnection("127.0.0.1", served.port, timeout=5)
+    conn.putrequest("POST", "/command", skip_host=True)
+    conn.putheader("Host", f"127.0.0.1:{served.port}")
+    conn.putheader("Authorization", f"Bearer {served.token}")
+    conn.putheader("Transfer-Encoding", "chunked")
+    conn.endheaders()
+    conn.send(b'f\r\n{"type": "mark"}\r\n0\r\n\r\n')
+    response = conn.getresponse()
+    assert response.status == 411
+    assert json.loads(response.read())["error"] == "length required"
+    conn.close()
+
+
 def test_events_stream_starts_with_hello_and_status(served: Server) -> None:
     conn = http.client.HTTPConnection("127.0.0.1", served.port, timeout=5)
     conn.request(

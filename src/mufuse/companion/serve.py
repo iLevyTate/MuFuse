@@ -14,6 +14,7 @@ import json
 import os
 import queue
 import secrets
+import sys
 import threading
 from collections import deque
 from collections.abc import Callable, Generator, Mapping, Sequence
@@ -494,13 +495,22 @@ class Engine:
 # The HTTP layer ------------------------------------------------------------------------------
 
 
+class _QuietHTTPServer(ThreadingHTTPServer):
+    """An app that goes away mid-connection is normal: no traceback for it on the console."""
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        if isinstance(sys.exc_info()[1], ConnectionError):
+            return
+        super().handle_error(request, client_address)
+
+
 class Server:
     """The engine on 127.0.0.1, on a free port, behind a token made fresh for this run."""
 
     def __init__(self, engine: Engine, *, port: int = 0, token: str | None = None) -> None:
         self.engine = engine
         self.token = token or secrets.token_urlsafe(24)
-        self._httpd = ThreadingHTTPServer(("127.0.0.1", port), _handler(self))
+        self._httpd = _QuietHTTPServer(("127.0.0.1", port), _handler(self))
         self._httpd.daemon_threads = True
         self.port = int(self._httpd.server_address[1])
         self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
@@ -567,6 +577,11 @@ def _handler(server: Server) -> type[BaseHTTPRequestHandler]:
                 return
             if urlparse(self.path).path != "/command":
                 self._reply(404, {"v": VERSION, "type": "error", "error": "not found"})
+                return
+            if "chunked" in self.headers.get("Transfer-Encoding", "").lower():
+                # The body would stay unread on the connection and look like a next request.
+                self.close_connection = True
+                self._reply(411, {"v": VERSION, "type": "error", "error": "length required"})
                 return
             try:
                 length = int(self.headers.get("Content-Length", "0"))
