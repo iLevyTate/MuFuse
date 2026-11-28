@@ -195,6 +195,17 @@ class Store:
         row = self._db.execute("SELECT value FROM settings WHERE key = 'answers'").fetchone()
         return DEFAULT_ANSWERS if row is None else tuple(json.loads(row[0]))
 
+    def setting(self, key: str) -> str | None:
+        row = self._db.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return None if row is None else str(row[0])
+
+    def set_setting(self, key: str, value: str) -> None:
+        self._db.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?)"
+            " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+
     def set_answers(self, answers: Sequence[str]) -> None:
         self._db.execute(
             "INSERT INTO settings (key, value) VALUES ('answers', ?)"

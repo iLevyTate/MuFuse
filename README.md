@@ -56,6 +56,7 @@ marks find, and what they do not find yet, is in [`docs/KNOWN-ISSUES.md`](docs/K
 | `mufuse quality label` | Check the fit, then record the guided 9.5-minute labelled session (cued blinks, jaw clenches, head turns, sensor lifts) and score it |
 | `mufuse quality score` | Score a labelled recording, or the public Muse 2 set with `--public DIR` |
 | `mufuse serve` | Run the engine for the desk strip: live quality, features against your baseline, check-ins ("What's on your mind?") stored by source in a local SQLite file; listens on 127.0.0.1 only, with a token made fresh each run |
+| `mufuse chat` | Ask the running engine what the signal is doing; a local model (Ollama) words the answer, the Claude API only with `--cloud` (summary only, never raw signal; `uv sync --extra cloud`); a fixed filter and crisis path stand in front of every reply |
 | `mufuse interpreters` | Each interpreter's standing on your own random check-ins (shadow or promoted, hit rate against the base rate, AUC, p, next look); `feedback on\|off` switches early feedback, tagged "speculative · unproven for you" |
 | `mufuse features` | Per-second EEG and pulse features of a recording (aperiodic exponent, alpha peak, band shares, blink rate, heart rate, RMSSD), each against your own baseline; `--csv` writes them out |
 | `python scripts/hw_acceptance.py` | Every hardware check of the headband in one guided sitting (`--rehearse` plays it on the simulator) |

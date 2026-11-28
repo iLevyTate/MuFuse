@@ -1,4 +1,4 @@
-"""MuFuse command-line interface: devices, stream, record, inspect, features, serve, quality."""
+"""MuFuse command-line interface: devices, stream, record, inspect, features, serve, chat, ..."""
 
 from __future__ import annotations
 
@@ -645,6 +645,46 @@ def _serve_loop(
 def _mmss(seconds: float) -> str:
     whole = max(int(seconds), 0)
     return f"{whole // 60:02d}:{whole % 60:02d}"
+
+
+@app.command()
+def chat(
+    cloud: Annotated[
+        bool | None,
+        typer.Option("--cloud/--local", help="Let the Claude API word replies (summary only)"),
+    ] = None,
+) -> None:
+    """Chat with the running engine (`mufuse serve`) in this terminal. An empty line ends it."""
+    from mufuse.chat.client import ChatClient, EngineNotRunningError
+
+    try:
+        client = ChatClient.from_serve_file()
+    except EngineNotRunningError as exc:
+        console.print(str(exc), markup=False, highlight=False)
+        raise typer.Exit(EXIT_CONNECT) from exc
+    if cloud is not None:
+        try:
+            client.cloud(cloud)
+        except EngineNotRunningError as exc:
+            console.print(str(exc), markup=False, highlight=False)
+            raise typer.Exit(EXIT_CONNECT) from exc
+        state = "on: replies may be worded by the Claude API" if cloud else "off"
+        console.print(f"Cloud {state}.", markup=False, highlight=False)
+    console.print("Ask what the signal is doing. An empty line ends the chat.", markup=False)
+    while True:
+        try:
+            text = input("> ").strip()
+        except EOFError:
+            break
+        if not text:
+            break
+        try:
+            reply = client.ask(text)
+        except EngineNotRunningError as exc:
+            console.print(str(exc), markup=False, highlight=False)
+            raise typer.Exit(EXIT_CONNECT) from exc
+        badge = " [cloud]" if reply.get("cloud") else ""
+        console.print(f"{reply.get('reply', reply.get('error'))}{badge}", markup=False)
 
 
 # mufuse interpreters --------------------------------------------------------------------------
