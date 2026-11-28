@@ -1,4 +1,4 @@
-"""MuFuse command-line interface: devices / stream / record / inspect / features / quality."""
+"""MuFuse command-line interface: devices, stream, record, inspect, features, serve, quality."""
 
 from __future__ import annotations
 
@@ -571,6 +571,80 @@ def features(
     if csv_out is not None:
         write_csv(frames, csv_out)
         console.print(f"Wrote {len(frames)} rows: {csv_out}", markup=False, highlight=False)
+
+
+@app.command()
+def serve(
+    source: SourceOpt = SourceKind.athena,
+    device: DeviceOpt = None,
+    preset: PresetOpt = DEFAULT_PRESET,
+    play: PlayOpt = None,
+    out: Annotated[Path, typer.Option(help="Recordings folder")] = Path("recordings"),
+    record: Annotated[bool, typer.Option(help="Record the session while serving")] = True,
+    duration: DurationOpt = None,
+) -> None:
+    """Run the engine for the desk strip: check-ins, features, on this computer only."""
+    import numpy as np
+
+    from mufuse.companion.serve import Engine, Server
+    from mufuse.companion.store import Store
+
+    factory, _ = _source_factory(source, device, preset, play)
+    store = Store()
+    engine = Engine(factory, store, time.time, np.random.default_rng(), out=out if record else None)
+    try:
+        engine.start()
+    except SourceError as exc:
+        console.print(f"[red]{exc}[/red]")
+        store.close()
+        raise typer.Exit(EXIT_CONNECT) from exc
+    server = Server(engine)
+    server.start()
+    info = server.write_serve_file()
+    console.print(
+        f"Serving on http://127.0.0.1:{server.port} (this computer only; token in {info}).",
+        markup=False,
+        highlight=False,
+    )
+    console.print("Start the desk strip now. Ctrl+C stops.", markup=False, highlight=False)
+    try:
+        _serve_loop(engine, duration)
+    finally:
+        server.stop()
+        engine.stop()
+        store.close()
+        with contextlib.suppress(OSError):
+            info.unlink()
+        if engine.writer is not None:
+            console.print(f"Saved session: {engine.writer.session_dir}", markup=False)
+
+
+def _serve_loop(
+    engine: object,
+    duration: float | None,
+    *,
+    clock: Callable[[], float] = time.time,
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
+    from mufuse.companion.serve import Engine
+
+    assert isinstance(engine, Engine)
+    started, last = clock(), -math.inf
+    with _stop_on_ctrl_c() as stop:
+        while not stop.is_set() and (duration is None or clock() - started < duration):
+            engine.step()
+            now = clock()
+            if now - last >= STATUS_EVERY_S:
+                last = now
+                s = engine.status()
+                line = f"{_mmss(now - started)}  {s['link']}  {s['line']}"
+                console.print(line, markup=False, highlight=False)
+            sleep(0.05)
+
+
+def _mmss(seconds: float) -> str:
+    whole = max(int(seconds), 0)
+    return f"{whole // 60:02d}:{whole % 60:02d}"
 
 
 # mufuse quality ------------------------------------------------------------------------------

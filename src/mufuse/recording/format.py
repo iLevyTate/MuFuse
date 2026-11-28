@@ -10,7 +10,7 @@ from typing import Literal
 FORMAT_VERSION = 1
 
 MarkerKind = Literal["moment", "block_start", "block_end", "system"]
-MarkerSource = Literal["keyboard", "system", "ring"]
+MarkerSource = Literal["keyboard", "system", "ring", "app"]  # app: the desk strip (005)
 GapReason = Literal["stall", "disconnect", "timestamp_jump"]
 ReconnectWhat = Literal["lost", "released", "attempt", "failed", "connected", "first_sample"]
 

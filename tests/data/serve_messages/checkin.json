@@ -1,0 +1,20 @@
+{
+ "v": 1,
+ "type": "checkin",
+ "id": 1,
+ "source": "self",
+ "t": 1700000020.0,
+ "question": "What's on your mind?",
+ "answers": [
+  "daydreaming",
+  "stuck on a thought",
+  "memory",
+  "feeling low",
+  "worry",
+  "urge",
+  "on task",
+  "planning",
+  "nothing much",
+  "own words"
+ ]
+}

@@ -103,6 +103,12 @@ class FeatureEngine:
         self._freqs: FloatArray = np.fft.rfftfreq(params.pair_n, d=1 / EEG_HZ)
         self._baselines = {name: Baseline() for name in WITH_BASELINE}
 
+    @property
+    def latest_answer(self) -> QualityAnswer | None:
+        """The newest judged second with samples, or None before the first and after a gap."""
+        newest = self._answers[-1] if self._answers else None
+        return None if newest is None or newest.no_data else newest
+
     def feed(self, chunks: Sequence[Chunk]) -> list[FeatureFrame]:
         for chunk in chunks:
             if chunk.kind is StreamKind.EEG:

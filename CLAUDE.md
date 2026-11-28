@@ -44,7 +44,12 @@ MUFUSE_SIM_WEARER=resting uv run mufuse record --source sim --duration 120   # d
   peak, band shares, blink rate, HR, RMSSD, z-scores vs a rolling personal baseline), the same
   live and replayed; constants in `params.py` (`FEATURES_VERSION`); golden frames in
   `tests/data/features_reference/` (`scripts/make_features_reference.py`).
-- `cli.py` — `devices / stream / record / inspect / features / quality`; `banner.py` — header shown only on a TTY.
+- `companion/` — feature 005: `store.py` (SQLite in the user data folder: sessions, check-ins by
+  source, marks), `scheduler.py` (random check-ins ≥ 30%, 15 min spacing, quiet times),
+  `describe.py` (the baseline line, words for the signal only), `serve.py` (`Engine` + `Server`:
+  127.0.0.1, per-run token in `serve.json`, SSE `/events`, `POST /command`; message examples in
+  `tests/data/serve_messages/`).
+- `cli.py` — `devices / stream / record / inspect / features / serve / quality`; `banner.py` — header shown only on a TTY.
 
 ## Gotchas
 - Only one device can connect to the headband; the phone Muse app must be closed.
