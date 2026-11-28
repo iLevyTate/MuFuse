@@ -24,6 +24,7 @@ from mufuse.cli import (
     _label,  # pyright: ignore[reportPrivateUsage]
     app,
 )
+from mufuse.preflight import Preflight
 from mufuse.quality.labelled import END_S, ScoreReport, rehearsal_wearer, schedule
 from mufuse.recording.reader import load_session
 from tests.conftest import FakeClock
@@ -131,3 +132,94 @@ def test_label_that_cannot_write_exits_5(tmp_path: Path, clock: FakeClock) -> No
     with pytest.raises(typer.Exit) as stopped:
         _label_run(not_a_folder, replace(rehearsal_wearer(), **QUICK), clock)
     assert stopped.value.exit_code == EXIT_WRITE
+
+
+# The pre-flight check before the first cue -------------------------------------------------------
+
+
+def _checked_run(out: Path, wearer: Wearer, clock: FakeClock) -> Labelled:
+    rehearsal = Rehearsal(wearer, clock=clock, sleep=clock.advance)
+    code, report, folder = _label(
+        _Attempt("quality label", SourceKind.sim, "p1041", clock.now),
+        rehearsal.source,
+        rehearsal.read_key,
+        out,
+        clock=clock,
+        sleep=lambda _: clock.advance(TICK_S),
+        check=Preflight(wait_s=20.0),
+        on_start=lambda: rehearsal.delay_script(rehearsal.now()),
+    )
+    return Labelled(code, report, folder)
+
+
+def _check_marker(folder: Path | None) -> str:
+    assert folder is not None
+    (label,) = [m.label for m in load_session(folder).markers if m.label.startswith("check:")]
+    return label
+
+
+def test_a_good_fit_starts_the_session_by_itself_and_it_still_passes(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    run = _checked_run(tmp_path, replace(rehearsal_wearer(), **QUICK), clock)
+    assert run.code == 0
+    assert run.report is not None
+    assert run.report.passed
+    assert run.report.replay_identical is True
+    assert _check_marker(run.folder) == "check:ready"
+
+
+def test_a_forehead_that_never_fits_waits_for_the_wearer_to_start_anyway(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    wearer = replace(rehearsal_wearer(), lifted=((0.0, 1e6, "AF7"),), keys=((25.0, "s"),), **QUICK)
+    run = _checked_run(tmp_path, wearer, clock)
+    assert run.code == 0  # recorded and scored: a missing sensor is not a show stopper
+    assert run.report is not None
+    assert not run.report.passed  # ... but AF7 out does cost the score
+    assert _check_marker(run.folder) == "check:anyway:AF7"
+    assert run.folder is not None
+    session = load_session(run.folder)
+    check = next(m.t for m in session.markers if m.label.startswith("check:"))
+    first_cue = min(m.t for m in session.markers if m.label.startswith("q:"))
+    assert check - session.manifest["started_at"] >= 20.0  # it waited the whole wait first
+    assert first_cue - check == pytest.approx(schedule()[0].t, abs=TICK_S)
+
+
+def test_q_at_the_check_stops_before_any_cue(tmp_path: Path, clock: FakeClock) -> None:
+    wearer = replace(rehearsal_wearer(), lifted=((0.0, 1e6, "AF8"),), keys=((5.0, "q"),), **QUICK)
+    run = _checked_run(tmp_path, wearer, clock)
+    assert run.code == EXIT_INTERRUPTED
+    assert run.folder is not None
+    session = load_session(run.folder)
+    assert session.finalized
+    assert not [m for m in session.markers if m.label.startswith(("q:", "check:"))]
+
+
+def test_quality_label_checks_the_fit_unless_told_not_to(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[Preflight | None] = []
+
+    def fake_label(
+        *args: object, check: Preflight | None, **kwargs: object
+    ) -> tuple[int, None, None]:
+        seen.append(check)
+        return 0, None, None
+
+    monkeypatch.setattr("mufuse.cli._label", fake_label)
+    runner = CliRunner()
+    assert (
+        runner.invoke(
+            app, ["quality", "label", "--source", "sim", "--out", str(tmp_path)]
+        ).exit_code
+        == 0
+    )
+    assert (
+        runner.invoke(
+            app, ["quality", "label", "--source", "sim", "--no-check", "--out", str(tmp_path)]
+        ).exit_code
+        == 0
+    )
+    assert isinstance(seen[0], Preflight)
+    assert seen[1] is None

@@ -25,12 +25,13 @@ from rich.live import Live
 from mufuse.acquisition.athena import DEFAULT_PRESET, preset_warning, validate_preset
 from mufuse.acquisition.source import HeadbandSource
 from mufuse.acquisition.supervisor import StreamSupervisor
-from mufuse.acquisition.types import SourceError
+from mufuse.acquisition.types import SourceError, StreamKind
 from mufuse.banner import print_banner
 from mufuse.config import load_config, save_config
 from mufuse.guide import Guide, guide_from_env
 from mufuse.keys import KeyPoller
 from mufuse.live_view import YELLOW, LiveStats, Screen, render
+from mufuse.preflight import START_KEYS, Preflight
 from mufuse.quality.engine import judge
 from mufuse.quality.labelled import (
     RUN_S,
@@ -218,9 +219,12 @@ def _run(
     read_key: Callable[[], str | None] = _read_key,
     stats: LiveStats | None = None,
     guide: Guide | None = None,
+    preflight: Preflight | None = None,
+    on_start: Callable[[], None] | None = None,
 ) -> None:
     """`stats`, when given, keeps what the live view judged (for the replay check); `guide`
-    replaces the one a launcher hands over in MUFUSE_GUIDE."""
+    replaces the one a launcher hands over in MUFUSE_GUIDE; `preflight` checks the fit before
+    the guide's clock starts, and `on_start` is called the moment it does."""
     sup = StreamSupervisor(factory, clock=clock)
     with _stop_on_ctrl_c() as stop:
         if attempt.slow:
@@ -249,7 +253,18 @@ def _run(
             console.print(f"! {warning}", style=YELLOW)
         try:
             _show_and_record(
-                sup, timer, duration, writer_factory, stop, clock, sleep, read_key, stats, guide
+                sup,
+                timer,
+                duration,
+                writer_factory,
+                stop,
+                clock,
+                sleep,
+                read_key,
+                stats,
+                guide,
+                preflight,
+                on_start,
             )
         except OSError as exc:
             console.print(f"[red]Write error: {exc}[/red]")
@@ -275,6 +290,8 @@ def _show_and_record(
     read_key: Callable[[], str | None],
     stats: LiveStats | None = None,
     guide: Guide | None = None,
+    preflight: Preflight | None = None,
+    on_start: Callable[[], None] | None = None,
 ) -> None:
     """The live loop. Whatever ends it, the session is finalized before this returns."""
     assert sup.source is not None
@@ -290,13 +307,17 @@ def _show_and_record(
         latest: list[Screen] = [render(sup, stats, recording)]
         while read_key() is not None:  # keys typed while it was connecting are not for this run
             pass
-        started = clock()
+        began = clock()
+        # What the guide panel shows and since when: the pre-flight check first, if there is one.
+        shown: list[tuple[Guide | None, float]] = [
+            (preflight.guide(deciding=False), began) if preflight else (guide, began)
+        ]
 
         def view() -> RenderableType:
             # Runs on Live's refresh thread, so the clocks keep moving even while a reconnect
             # attempt blocks the loop below.
-            elapsed = clock() - started
-            return latest[0].with_time(elapsed, guide, elapsed)
+            panel, since = shown[0]
+            return latest[0].with_time(clock() - began, panel, clock() - since)
 
         # A terminal gets the redrawn view; piped or redirected output gets a status line now
         # and then, since a redrawn panel would only reach it when the run ends.
@@ -307,6 +328,14 @@ def _show_and_record(
         )
         last_status = -math.inf
         with display:
+            if preflight is not None:
+                go = _preflight(sup, stats, writer, preflight, stop, clock, sleep, read_key, shown)
+                if not go:
+                    return
+            started = clock()
+            shown[0] = (guide, started)
+            if on_start is not None:
+                on_start()
             # The time limit is checked before every poll, so no reconnect attempt begins
             # after it has passed.
             while not stop.is_set() and (duration is None or clock() - started < duration):
@@ -329,7 +358,7 @@ def _show_and_record(
                 if writer is not None and (marker := _key_marker(key, open_blocks, now)):
                     writer.add_marker(marker)
                     markers += 1
-                latest[0] = render(sup, stats, recording, markers, elapsed=now - started)
+                latest[0] = render(sup, stats, recording, markers, elapsed=now - began)
                 if not console.is_terminal and now - last_status >= STATUS_EVERY_S:
                     _status(latest[0], clock() - started, guide)
                     last_status = now
@@ -349,6 +378,52 @@ def _show_and_record(
             console.print(
                 "[yellow]Stopped before the signal returned. The gap is saved as open.[/yellow]"
             )
+
+
+def _preflight(
+    sup: StreamSupervisor,
+    stats: LiveStats,
+    writer: SessionWriter | None,
+    check: Preflight,
+    stop: threading.Event,
+    clock: Callable[[], float],
+    sleep: Callable[[float], None],
+    read_key: Callable[[], str | None],
+    shown: list[tuple[Guide | None, float]],
+) -> bool:
+    """Wait for a good fit before the guide starts. True: go on; False: the wearer stopped.
+
+    The samples of the check are recorded like any other, so the session shows the fitting too.
+    Nothing here stops the run on its own: past the wait, the wearer decides.
+    """
+    began, deciding = clock(), False
+    while not stop.is_set():
+        chunks = sup.poll()
+        now = clock()
+        stats.add(chunks, now)
+        if writer is not None:
+            writer.write(chunks)
+        sensors, motion = stats.contact(), stats.rate(StreamKind.MOTION) > 0
+        phase = check.phase(sensors, motion=motion, elapsed=now - began)
+        key = read_key()
+        if key == "q":
+            console.print("Stopped at the pre-flight check.")
+            return False
+        if phase == "ready" or key in START_KEYS:
+            anyway = phase != "ready"
+            for line in check.outcome(sensors, motion=motion, anyway=anyway):
+                console.print(line, markup=False, highlight=False)
+            if writer is not None:
+                label = check.marker(sensors, anyway=anyway)
+                writer.add_marker(Marker(t=now, kind="system", label=label, source="system"))
+            return True
+        if phase == "decide" and not deciding:
+            deciding = True
+            shown[0] = (check.guide(deciding=True), now)
+            if not console.is_terminal:
+                console.print("Pre-flight: forehead not good yet. s = start anyway, q = stop.")
+        sleep(0.05)
+    return False
 
 
 def _status(screen: Screen, elapsed: float, guide: Guide | None) -> None:
@@ -488,6 +563,8 @@ def _label(
     *,
     clock: Callable[[], float] = time.time,
     sleep: Callable[[float], None] = time.sleep,
+    check: Preflight | None = None,
+    on_start: Callable[[], None] | None = None,
 ) -> tuple[int, ScoreReport | None, Path | None]:
     """Record the labelled session, then score it and check the replay. Returns the exit code,
     the report (None when it was stopped early) and the session folder."""
@@ -511,6 +588,8 @@ def _label(
         read_key=read_key,
         stats=stats,
         guide=labelled_guide(),
+        preflight=check,
+        on_start=on_start,
     )
     session = load_session(folder[0])
     cues = cues_from_markers(session.markers)
@@ -532,8 +611,11 @@ def quality_label(
     ] = SourceKind.athena,
     device: DeviceOpt = None,
     out: Annotated[Path, typer.Option(help="Recordings folder")] = Path("recordings"),
+    check: Annotated[
+        bool, typer.Option(help="Check the fit first; after 60 s you may start anyway")
+    ] = True,
 ) -> None:
-    """Record the guided labelled session (about 9.5 minutes), then score it."""
+    """Check the fit, record the guided labelled session (about 9.5 minutes), then score it."""
     if source is SourceKind.play:
         console.print("[red]A labelled session is recorded live: use --source athena or sim[/red]")
         raise typer.Exit(EXIT_BAD_ARGS)
@@ -544,10 +626,14 @@ def quality_label(
         rehearsal = Rehearsal(rehearsal_wearer())
         factory: Callable[[], HeadbandSource] = rehearsal.source
         read_key = lambda: rehearsal.read_key() or _read_key()  # noqa: E731
+        # The scripted wearer follows the cues, so the script waits for the check as well.
+        on_start: Callable[[], None] | None = lambda: rehearsal.delay_script(rehearsal.now())  # noqa: E731
     else:
         factory, read_key = _source_factory(source, device, DEFAULT_PRESET, None)
+        on_start = None
+    preflight = Preflight() if check else None
     with _KEYS:
-        code, _, _ = _label(attempt, factory, read_key, out)
+        code, _, _ = _label(attempt, factory, read_key, out, check=preflight, on_start=on_start)
     raise typer.Exit(code)
 
 

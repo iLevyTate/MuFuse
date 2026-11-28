@@ -11,7 +11,7 @@ from __future__ import annotations
 import signal
 import time
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 import numpy as np
@@ -230,6 +230,34 @@ class Rehearsal:
         """Seconds into the script; 0 until it begins."""
         return 0.0 if self.t0 is None else self.clock() - self.t0
 
+    def delay_script(self, seconds: float) -> None:
+        """Move everything the wearer still has to do `seconds` later.
+
+        A guided run may wait for a good fit before its first cue; the scripted wearer, who follows
+        the cues, waits with it. The headband's own timings (connect, scan, release, switched off)
+        stay where they are.
+        """
+        w = self.wearer
+
+        def spans(xs: tuple[tuple[float, float], ...]) -> tuple[tuple[float, float], ...]:
+            return tuple((a + seconds, b + seconds) for a, b in xs)
+
+        def on(xs: tuple[tuple[float, float, str], ...]) -> tuple[tuple[float, float, str], ...]:
+            return tuple((a + seconds, b + seconds, ch) for a, b, ch in xs)
+
+        self.wearer = replace(
+            w,
+            lifted=on(w.lifted),
+            clench=spans(w.clench),
+            blinks=spans(w.blinks),
+            noisy=on(w.noisy),
+            flat=on(w.flat),
+            railed=on(w.railed),
+            turns=spans(w.turns),
+            optics=tuple((t + seconds, where) for t, where in w.optics),
+        )
+        self._keys = [(t + seconds, key) for t, key in self._keys]
+
     def read_key(self) -> str | None:
         """The next scripted key that is due, the way the CLI's key reader hands keys over."""
         if self.t0 is None or not self._keys or self._keys[0][0] > self.now():
@@ -247,7 +275,6 @@ class _WornAthena(SimulatedAthena):
     def __init__(self, rehearsal: Rehearsal) -> None:
         super().__init__(clock=rehearsal.clock, seed=rehearsal.seed, preset=rehearsal.preset)
         self._rehearsal = rehearsal
-        self._wearer = rehearsal.wearer
         self._device = DeviceInfo(
             name="SimulatedAthena",
             preset=rehearsal.preset,
@@ -257,6 +284,10 @@ class _WornAthena(SimulatedAthena):
         self._shift = 0.0  # this connection's start on the script's timeline
         self._lost_at = np.inf  # ... and when its link dies: the next time the headband goes off
         self._own: dict[StreamKind, np.random.Generator] = {}
+
+    @property
+    def _wearer(self) -> Wearer:
+        return self._rehearsal.wearer  # read each time: the script may be delayed (delay_script)
 
     def start(self) -> None:
         now = self._rehearsal.now()
