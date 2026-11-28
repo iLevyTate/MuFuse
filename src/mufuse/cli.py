@@ -594,13 +594,22 @@ def serve(
     out: Annotated[Path, typer.Option(help="Recordings folder")] = Path("recordings"),
     record: Annotated[bool, typer.Option(help="Record the session while serving")] = True,
     duration: DurationOpt = None,
+    hotkey: Annotated[
+        str, typer.Option(help="Global key that marks a moment from any window; 'none' for off")
+    ] = "ctrl+alt+m",
 ) -> None:
     """Run the engine for the desk strip: check-ins, features, on this computer only."""
     import numpy as np
 
+    from mufuse.companion.hotkey import Hotkey, parse
     from mufuse.companion.serve import Engine, Server
     from mufuse.companion.store import Store
 
+    try:
+        combo = None if hotkey.strip().lower() == "none" else parse(hotkey)
+    except ValueError as exc:
+        console.print(str(exc), markup=False, highlight=False)
+        raise typer.Exit(EXIT_BAD_ARGS) from exc
     factory, _ = _source_factory(source, device, preset, play)
     store = Store()
     engine = Engine(factory, store, time.time, np.random.default_rng(), out=out if record else None)
@@ -619,9 +628,23 @@ def serve(
         highlight=False,
     )
     console.print("Start the desk strip now. Ctrl+C stops.", markup=False, highlight=False)
+    keys: Hotkey | None = None
+    if combo is not None:
+        text = combo.text
+
+        def pressed() -> None:
+            t = engine.mark(source="keyboard")
+            console.print(f"Marked at {_mmss(t - engine.started)} ({text})", markup=False)
+
+        keys = Hotkey(combo, pressed)
+        why = keys.start()
+        line = f"{text} marks a moment from any window." if why is None else f"{why}."
+        console.print(line, markup=False, highlight=False)
     try:
         _serve_loop(engine, duration)
     finally:
+        if keys is not None:
+            keys.stop()
         server.stop()
         engine.stop()
         store.close()
