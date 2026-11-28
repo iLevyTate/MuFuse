@@ -57,7 +57,11 @@ MUFUSE_SIM_WEARER=resting uv run mufuse record --source sim --duration 120   # d
   the person, conditions, diagnosis, treatment, accuracy claims, mind reading), `summary.py` (numbers
   from code, template answer), `models.py` (Ollama default; Claude opt-in via the `cloud` extra,
   `claude-opus-5-5`, fallbacks on), `session.py`, `client.py`. Never let a model bypass filter or crisis.
-- `cli.py` — `devices / stream / record / inspect / features / serve / chat / interpreters / quality`; `banner.py` — header shown only on a TTY.
+- `journal/` — feature 008: `timeline.py`, `patterns.py` (random check-ins only; n ≥ 3; every pattern
+  shows n, effect in points and "hypothesis"), `calendar.py` (stdlib .ics, meetings), `review.py`
+  (static escaped HTML in the user data folder).
+- `cli.py` — `devices / stream / record / inspect / features / serve / chat / timeline / journal /
+  calendar / review / interpreters / quality`; `banner.py` — header shown only on a TTY.
 
 ## Gotchas
 - Only one device can connect to the headband; the phone Muse app must be closed.

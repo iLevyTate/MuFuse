@@ -61,6 +61,20 @@ CREATE TABLE IF NOT EXISTS scores (
     after_insight INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (checkin, interpreter)
 );
+CREATE TABLE IF NOT EXISTS observations (
+    id INTEGER PRIMARY KEY,
+    session INTEGER NOT NULL REFERENCES sessions(id),
+    series TEXT NOT NULL, direction TEXT NOT NULL, start_t REAL NOT NULL, end_t REAL
+);
+CREATE TABLE IF NOT EXISTS journal (
+    id INTEGER PRIMARY KEY, session INTEGER, t REAL NOT NULL, text TEXT NOT NULL,
+    tags TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS context (
+    id INTEGER PRIMARY KEY, start_t REAL NOT NULL, end_t REAL NOT NULL, tag TEXT NOT NULL,
+    label TEXT NOT NULL, source TEXT NOT NULL,
+    UNIQUE (start_t, end_t, tag, label, source)
+);
 CREATE TABLE IF NOT EXISTS interpreters (
     id TEXT PRIMARY KEY,
     state TEXT NOT NULL DEFAULT 'shadow',
@@ -259,6 +273,96 @@ class Store:
             " last_look = excluded.last_look, early = excluded.early",
             (state.id, state.state, state.last_look, int(state.early)),
         )
+
+    # Journal, observations, context (008) -----------------------------------------------------
+
+    def observation_started(self, session: int, *, series: str, direction: str, t: float) -> int:
+        cur = self._db.execute(
+            "INSERT INTO observations (session, series, direction, start_t) VALUES (?, ?, ?, ?)",
+            (session, series, direction, t),
+        )
+        return int(cur.lastrowid or 0)
+
+    def observation_ended(self, session: int, *, series: str, t: float) -> None:
+        self._db.execute(
+            "UPDATE observations SET end_t = ? WHERE session = ? AND series = ? AND end_t IS NULL",
+            (t, session, series),
+        )
+
+    def observations(self, *, since: float = 0.0, session: int | None = None) -> list[Observed]:
+        query = (
+            "SELECT session, series, direction, start_t, end_t FROM observations WHERE start_t >= ?"
+        )
+        args: tuple[float | int, ...] = (since,)
+        if session is not None:
+            query, args = query + " AND session = ?", (since, session)
+        rows = self._db.execute(query + " ORDER BY start_t", args)
+        return [Observed(int(a), str(b), str(c), float(d), e) for a, b, c, d, e in rows]
+
+    def note(
+        self, *, t: float, text: str, tags: Sequence[str] = (), session: int | None = None
+    ) -> int:
+        cur = self._db.execute(
+            "INSERT INTO journal (session, t, text, tags) VALUES (?, ?, ?, ?)",
+            (session, t, text, json.dumps(list(tags))),
+        )
+        return int(cur.lastrowid or 0)
+
+    def notes(self, *, since: float = 0.0, until: float = float("inf")) -> list[Note]:
+        rows = self._db.execute(
+            "SELECT session, t, text, tags FROM journal WHERE t >= ? AND t <= ? ORDER BY t",
+            (since, until if until != float("inf") else 1e18),
+        )
+        return [Note(s, float(t), str(x), tuple(json.loads(g))) for s, t, x, g in rows]
+
+    def add_context(self, *, start: float, end: float, tag: str, label: str, source: str) -> bool:
+        """A time window with a tag; False when the same window was imported before."""
+        cur = self._db.execute(
+            "INSERT OR IGNORE INTO context (start_t, end_t, tag, label, source)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (start, end, tag, label, source),
+        )
+        return cur.rowcount > 0
+
+    def context(self, *, since: float = 0.0, until: float = 1e18) -> list[Context]:
+        rows = self._db.execute(
+            "SELECT start_t, end_t, tag, label FROM context WHERE end_t >= ? AND start_t <= ?"
+            " ORDER BY start_t",
+            (since, until),
+        )
+        return [Context(float(a), float(b), str(c), str(d)) for a, b, c, d in rows]
+
+    def sessions(self, *, since: float = 0.0) -> list[tuple[int, float, float | None]]:
+        rows = self._db.execute(
+            "SELECT id, started_t, ended_t FROM sessions WHERE started_t >= ? ORDER BY started_t",
+            (since,),
+        )
+        return [(int(i), float(a), b) for i, a, b in rows]
+
+
+@dataclass(frozen=True)
+class Observed:
+    session: int
+    series: str
+    direction: str
+    start: float
+    end: float | None
+
+
+@dataclass(frozen=True)
+class Note:
+    session: int | None
+    t: float
+    text: str
+    tags: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Context:
+    start: float
+    end: float
+    tag: str
+    label: str
 
 
 @dataclass(frozen=True)

@@ -687,6 +687,117 @@ def chat(
         console.print(f"{reply.get('reply', reply.get('error'))}{badge}", markup=False)
 
 
+# mufuse journal / timeline / calendar / review (008) ------------------------------------------
+
+journal_app = typer.Typer(no_args_is_help=True, help="Your own notes, kept on this computer.")
+app.add_typer(journal_app, name="journal")
+calendar_app = typer.Typer(no_args_is_help=True, help="Meetings from a calendar file (.ics).")
+app.add_typer(calendar_app, name="calendar")
+
+
+@journal_app.command("add")
+def journal_add(
+    text: Annotated[str, typer.Argument(help="The note")],
+    tag: Annotated[list[str] | None, typer.Option(help="A tag; repeat for more")] = None,
+) -> None:
+    """Add a note to the journal."""
+    from mufuse.companion.store import Store
+
+    store = Store()
+    try:
+        store.note(t=time.time(), text=text, tags=tag or [])
+    finally:
+        store.close()
+    console.print("Noted.", markup=False)
+
+
+@journal_app.command("list")
+def journal_list(days: Annotated[float, typer.Option(help="How far back")] = 7.0) -> None:
+    """The notes of the last days."""
+    from mufuse.companion.store import Store
+
+    store = Store()
+    try:
+        notes = store.notes(since=time.time() - days * 86400)
+    finally:
+        store.close()
+    if not notes:
+        console.print("No notes yet.", markup=False)
+    for n in notes:
+        when = datetime.fromtimestamp(n.t).strftime("%a %d %b %H:%M")
+        tags = f"  [{', '.join(n.tags)}]" if n.tags else ""
+        console.print(f"{when}  {n.text}{tags}", markup=False, highlight=False)
+
+
+@app.command()
+def timeline(
+    session: Annotated[
+        int | None, typer.Argument(help="Session number; the newest if left out")
+    ] = None,
+) -> None:
+    """One serve session as a timeline: check-ins, observations, marks, notes, meetings."""
+    from mufuse.companion.store import Store
+    from mufuse.journal.timeline import timeline as make
+    from mufuse.journal.timeline import timeline_lines
+
+    store = Store()
+    try:
+        sessions = store.sessions()
+        if not sessions:
+            console.print("No sessions yet: run `mufuse serve` first.", markup=False)
+            raise typer.Exit(EXIT_UNREADABLE)
+        chosen = session if session is not None else sessions[-1][0]
+        try:
+            events = make(store, chosen)
+        except KeyError as exc:
+            console.print(f"No session {chosen}.", markup=False)
+            raise typer.Exit(EXIT_BAD_ARGS) from exc
+    finally:
+        store.close()
+    for line in timeline_lines(events):
+        console.print(line, markup=False, highlight=False)
+
+
+@calendar_app.command("import")
+def calendar_import(
+    path: Annotated[Path, typer.Argument(help="An .ics file you exported")],
+) -> None:
+    """Store the file's events as meeting windows (read once; no account, no network)."""
+    from mufuse.companion.store import Store
+    from mufuse.journal.calendar import import_file
+
+    store = Store()
+    try:
+        new, known = import_file(store, path)
+    except OSError as exc:
+        console.print(f"Cannot read {path}: {exc}", markup=False)
+        raise typer.Exit(EXIT_UNREADABLE) from exc
+    finally:
+        store.close()
+    console.print(f"{new} meetings added, {known} already there.", markup=False)
+
+
+@app.command()
+def review(
+    days: Annotated[float, typer.Option(help="How far back")] = 7.0,
+    out: Annotated[Path | None, typer.Option(help="Write the page here")] = None,
+) -> None:
+    """The weekly reflection: patterns (n, effect, hypothesis) and a review page on disk."""
+    from mufuse.companion.store import Store
+    from mufuse.journal import review as page
+    from mufuse.journal.patterns import find, pattern_lines
+
+    now = time.time()
+    store = Store()
+    try:
+        for line in pattern_lines(find(store, since=now - days * 86400, until=now)):
+            console.print(line, markup=False, highlight=False)
+        path = page.write(store, since=now - days * 86400, until=now, out=out)
+    finally:
+        store.close()
+    console.print(f"Review page: {path}", markup=False, highlight=False)
+
+
 # mufuse interpreters --------------------------------------------------------------------------
 
 interpreters_app = typer.Typer(help="Interpreters: shadow mode, hit rates, early feedback (006).")
