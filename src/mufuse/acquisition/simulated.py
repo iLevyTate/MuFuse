@@ -190,12 +190,37 @@ class Wearer:
     turns: tuple[tuple[float, float], ...] = ()  # (from, to): the head turns there and back
     optics: tuple[tuple[float, Sensors], ...] = ()  # (from, where), in order; on the head before
     keys: tuple[tuple[float, str], ...] = ()  # (when, key); CTRL_C is the signal, not a key
+    resting: bool = False  # EEG with a 1/f background and alpha bursts (feature 003)
+    exponent: float = 1.5  # ... the slope of that background
+    heart_bpm: float = 72.0
     firmware: str = "3.1.19"
     battery: float = 80.0  # percent
     connect_s: float = 4.0  # how long start() takes
     first_data_s: float = 0.5  # ... and how much later the first sample comes
     scan_s: float = 16.0  # how long start() looks for a headband that is off before it gives up
     stop_s: float = 7.3  # how long stop() takes to release a live link
+
+
+RESTING_HZ = np.arange(0.4, 100.0, 0.37)  # not a whole-second spacing: never exactly periodic
+RESTING_SCALE_UV = 5.0  # about 10 µV spread over all four sensors
+ALPHA_UV, ALPHA_BURST_HZ = 6.0, 0.05  # 10 Hz, waxing and waning over 20 s
+
+
+def resting_eeg(t: FloatArray, exponent: float, seed: int = 0) -> FloatArray:
+    """(len(t), 4) µV of resting EEG: a 1/f^exponent background and bursts of 10 Hz alpha.
+
+    A sum of sines with fixed phases per sensor, so it is a function of time alone and the same
+    however the samples are read. Power falls as f^-exponent, so the aperiodic fit can find it.
+    """
+    phases = np.random.default_rng([seed, 99]).uniform(0, 2 * np.pi, (4, RESTING_HZ.size + 1))
+    amp = RESTING_SCALE_UV * RESTING_HZ ** (-exponent / 2)
+    arg = 2 * np.pi * np.outer(t, RESTING_HZ)
+    out = np.empty((t.size, 4))
+    burst = 0.5 + 0.5 * np.sin(2 * np.pi * ALPHA_BURST_HZ * t)
+    for k in range(4):
+        out[:, k] = np.sin(arg + phases[k, :-1]) @ amp
+        out[:, k] += ALPHA_UV * burst * np.sin(2 * np.pi * 10.0 * t + phases[k, -1])
+    return out
 
 
 class Rehearsal:
@@ -331,6 +356,8 @@ class _WornAthena(SimulatedAthena):
         self, data: FloatArray, noise: FloatArray, index: np.ndarray, t: FloatArray
     ) -> FloatArray:
         wearer, names = self._wearer, ATHENA_STREAMS[StreamKind.EEG].channel_names
+        if wearer.resting:
+            data[:, :4] = resting_eeg(t, wearer.exponent, self._rehearsal.seed) + noise[:, :4]
         data[:, :4] += REST_OFFSET_UV
         for start, end, channel in wearer.lifted:
             rows, ch = (t >= start) & (t < end), names.index(channel)
@@ -374,7 +401,7 @@ class _WornAthena(SimulatedAthena):
             rows = t >= start
             level[rows] = _OPTICS_LEVEL[sensors]
             on_head[rows] = sensors == "head"
-        pulse = PULSE_SHARE * np.sin(2 * np.pi * 1.2 * t) * on_head
+        pulse = PULSE_SHARE * np.sin(2 * np.pi * (wearer.heart_bpm / 60.0) * t) * on_head
         level[:, _LED] *= 1 + pulse[:, None]
         optics = np.empty((rel.size, 17))
         optics[:, :16] = level + OPTICS_SCATTER * noise[:, :16]

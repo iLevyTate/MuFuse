@@ -1,4 +1,4 @@
-"""MuFuse command-line interface: devices / stream / record / inspect."""
+"""MuFuse command-line interface: devices / stream / record / inspect / features / quality."""
 
 from __future__ import annotations
 
@@ -547,6 +547,30 @@ def inspect(path: Path) -> None:
         return
     for line in summary_lines(quality):
         console.print(line, markup=False, highlight=False)
+
+
+@app.command()
+def features(
+    path: Annotated[Path, typer.Argument(help="A recorded session folder")],
+    csv_out: Annotated[
+        Path | None, typer.Option("--csv", help="Also write one row per second to this file")
+    ] = None,
+) -> None:
+    """EEG and pulse features of a recorded session, each second against your own baseline."""
+    from mufuse.features.engine import extract
+    from mufuse.features.report import summary_lines, write_csv
+
+    try:
+        session = load_session(path)
+    except (OSError, ValueError, KeyError) as exc:
+        console.print(f"[red]Cannot read session: {exc}[/red]")
+        raise typer.Exit(EXIT_UNREADABLE) from exc
+    frames = extract(session)
+    for line in summary_lines(frames):
+        console.print(line, markup=False, highlight=False)
+    if csv_out is not None:
+        write_csv(frames, csv_out)
+        console.print(f"Wrote {len(frames)} rows: {csv_out}", markup=False, highlight=False)
 
 
 # mufuse quality ------------------------------------------------------------------------------

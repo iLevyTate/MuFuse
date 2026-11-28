@@ -946,14 +946,16 @@ def wearer_for(check: Check, *, react: float = 1.0, idle: bool = False) -> Weare
 
 def wearer_from_env() -> Wearer | None:
     """The simulated wearer chosen in MUFUSE_SIM_WEARER, if any: a check id for a wearer who
-    follows that check, or the id and ":idle" for one who does nothing."""
+    follows that check, the id and ":idle" for one who does nothing, or "resting"."""
     raw = os.environ.get("MUFUSE_SIM_WEARER", "").strip()
     if not raw:
         return None
+    if raw.upper() == "RESTING":  # a still wearer with resting EEG and a pulse (feature 003)
+        return Wearer(resting=True)
     check_id, _, variant = raw.upper().partition(":")
     if check_id not in CHECKS or variant not in ("", "IDLE"):
         raise ValueError(
             f"MUFUSE_SIM_WEARER={raw!r} is not a rehearsal. Use one of {', '.join(CHECKS)}, "
-            "or add :idle for a wearer who does nothing, e.g. H8:idle"
+            "or add :idle for a wearer who does nothing, e.g. H8:idle, or use resting"
         )
     return wearer_for(CHECKS[check_id], idle=variant == "IDLE")
