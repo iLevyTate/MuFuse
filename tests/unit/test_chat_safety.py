@@ -44,9 +44,12 @@ def test_ordinary_words_are_not_caught(text: str) -> None:
 
 
 def test_the_crisis_reply_is_fixed_and_names_real_lines() -> None:
-    assert "988" in CRISIS_REPLY
-    assert "911" in CRISIS_REPLY
-    assert "findahelpline.com" in CRISIS_REPLY
+    lines = CRISIS_REPLY.splitlines()
+    assert (
+        "- In the United States: call or text 988 (Suicide & Crisis Lifeline), any time." in lines
+    )
+    assert "- If there is immediate danger: call 911." in lines
+    assert "- Anywhere else: findahelpline.com lists free, confidential lines by country." in lines
     assert check(CRISIS_REPLY).ok  # it passes its own filter
 
 
