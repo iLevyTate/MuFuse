@@ -77,6 +77,30 @@ void main() {
     expect(identical(reduce(s, {'v': 1, 'type': 'dance'}), s), isTrue);
   });
 
+  test('a chat message is kept word for word with its source and cloud flag', () {
+    final said = example('chat');
+    final s = reduce(const StripState(connected: true), said);
+    final line = s.chat.single;
+    expect(line.text, said['text']); // never re-worded
+    expect((line.role, line.source, line.model, line.cloud), ('assistant', 'template', null, false));
+    final cloudy = reduce(s, {...said, 'cloud': true, 'source': 'model', 'model': 'claude-opus-5-5'});
+    expect(cloudy.chat.last.cloud, isTrue);
+  });
+
+  test('hello says whether the cloud model is on', () {
+    expect(reduce(const StripState(), {...example('hello'), 'cloud': true}).cloud, isTrue);
+    expect(reduce(const StripState(cloud: true), example('hello')).cloud, isFalse);
+  });
+
+  test('the chat keeps its newest lines only', () {
+    var s = const StripState();
+    for (var i = 0; i < StripState.chatKept + 5; i++) {
+      s = s.withLine(ChatLine(role: 'you', text: '$i'));
+    }
+    expect(s.chat.length, StripState.chatKept);
+    expect(s.chat.last.text, '${StripState.chatKept + 4}');
+  });
+
   test('a long session shows hours', () {
     expect(const StripState(elapsed: 3725).clock, '1:02:05');
   });

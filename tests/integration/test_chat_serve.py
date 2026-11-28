@@ -80,6 +80,7 @@ def test_cloud_is_off_until_switched_on_and_remembered(tmp_path: Path) -> None:
     engine.command({"type": "ask", "text": "hi"})
     assert asked_cloud == [False, True]
     assert engine.store.setting("cloud") == "on"
+    assert engine.hello()["cloud"] is True  # the app's toggle starts where it was left
     engine.stop()
 
 

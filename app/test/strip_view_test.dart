@@ -26,6 +26,15 @@ class FakeLink implements EngineLink {
   void close() {}
 }
 
+/// An engine that confirms a cloud switch the way `mufuse serve` does.
+class CloudLink extends FakeLink {
+  @override
+  Future<Map<String, dynamic>> command(Map<String, Object?> body) async {
+    sent.add(body);
+    return {'v': 1, 'type': 'ok', if (body['type'] == 'cloud') 'cloud': body['on']};
+  }
+}
+
 Widget host(StripController c) => MaterialApp(
       home: Scaffold(
         body: ListenableBuilder(
@@ -38,6 +47,10 @@ Widget host(StripController c) => MaterialApp(
             onMark: c.mark,
             onSnooze: c.snooze,
             onAnswer: c.answer,
+            chatOpen: c.chatOpen,
+            onChat: c.toggleChat,
+            onAsk: c.ask,
+            onCloud: c.setCloud,
           ),
         ),
       ),
@@ -52,6 +65,50 @@ void main() {
     expect(find.textContaining('Engine not running: run `uv run mufuse serve`'), findsOneWidget);
     c.dispose();
     await tester.pump(const Duration(milliseconds: 20));
+  });
+
+  testWidgets('the chat panel shows replies as sent, badges cloud ones, asks and switches cloud', (tester) async {
+    final link = CloudLink();
+    final c = StripController(
+      find: () async => const ServeInfo(port: 1, token: 't', version: 1),
+      connect: (_) => link,
+    );
+    unawaited(c.run());
+    await tester.pumpWidget(host(c));
+    link.messages
+      ..add(example('hello'))
+      ..add({...example('status'), 'sensors': {'AF7': 'good', 'AF8': 'good'}});
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const Key('chat')), findsNothing);
+    await tester.tap(find.text('chat'));
+    await tester.pump();
+    expect(find.byKey(const Key('chat')), findsOneWidget);
+
+    final said = example('chat');
+    link.messages
+      ..add(said)
+      ..add({...said, 'text': 'From the cloud model, as sent.', 'cloud': true, 'source': 'model'});
+    await tester.pump();
+    await tester.pump();
+    expect(find.text(said['text'] as String), findsOneWidget);
+    expect(find.text('From the cloud model, as sent.'), findsOneWidget);
+    expect(find.byKey(const Key('cloud-badge')), findsOneWidget); // only the cloud line
+
+    await tester.enterText(find.byKey(const Key('ask')), 'what are you seeing?');
+    await tester.tap(find.byKey(const Key('ask-send')));
+    await tester.pump();
+    expect(link.sent.last, {'type': 'ask', 'text': 'what are you seeing?'});
+    expect(find.text('what are you seeing?'), findsOneWidget); // the wearer's own line
+
+    await tester.tap(find.byKey(const Key('cloud-switch')));
+    await tester.pump();
+    await tester.pump();
+    expect(link.sent.last, {'type': 'cloud', 'on': true});
+    expect(tester.widget<Switch>(find.byKey(const Key('cloud-switch'))).value, isTrue);
+    c.dispose();
+    await link.messages.close();
+    await tester.pump();
   });
 
   testWidgets('a replayed session drives the strip and the check-in panel', (tester) async {

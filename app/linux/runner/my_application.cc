@@ -53,7 +53,7 @@ static void my_application_activate(GApplication* application) {
   }
 
   // A thin strip with room for the check-in panel, kept above other windows.
-  gtk_window_set_default_size(window, 840, 230);
+  gtk_window_set_default_size(window, 840, 290);
   gtk_window_set_keep_above(window, TRUE);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();

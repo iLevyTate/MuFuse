@@ -13,6 +13,28 @@ class CheckinView {
   final String source;
 }
 
+/// One line of the chat. `text` is shown exactly as it came: never re-worded in Dart.
+class ChatLine {
+  const ChatLine({required this.role, required this.text, this.source = '', this.model, this.cloud = false, this.t = 0});
+
+  /// From a `chat` message of the engine.
+  factory ChatLine.of(Map<String, dynamic> m) => ChatLine(
+        role: (m['role'] as String?) ?? 'assistant',
+        text: (m['text'] as String?) ?? '',
+        source: (m['source'] as String?) ?? '',
+        model: m['model'] as String?,
+        cloud: m['cloud'] == true,
+        t: (m['t'] as num?)?.toDouble() ?? 0,
+      );
+
+  final String role; // 'assistant' from the engine, 'you' for what the wearer typed
+  final String text;
+  final String source;
+  final String? model;
+  final bool cloud; // the words came from a cloud model: always shown with a badge
+  final double t;
+}
+
 class StripState {
   const StripState({
     this.connected = false,
@@ -26,6 +48,8 @@ class StripState {
     this.focus = false,
     this.checkin,
     this.ended = false,
+    this.chat = const [],
+    this.cloud = false,
   });
 
   final bool connected;
@@ -39,7 +63,10 @@ class StripState {
   final bool focus;
   final CheckinView? checkin;
   final bool ended;
+  final List<ChatLine> chat;
+  final bool cloud; // whether the cloud model is switched on
 
+  static const chatKept = 100;
   static const forehead = ['AF7', 'AF8'];
   static const _rank = {'none': 0, 'noisy': 1, 'settling': 2, 'good': 3};
 
@@ -84,6 +111,8 @@ class StripState {
     bool? focus,
     CheckinView? Function()? checkin,
     bool? ended,
+    List<ChatLine>? chat,
+    bool? cloud,
   }) =>
       StripState(
         connected: connected ?? this.connected,
@@ -97,7 +126,15 @@ class StripState {
         focus: focus ?? this.focus,
         checkin: checkin != null ? checkin() : this.checkin,
         ended: ended ?? this.ended,
+        chat: chat ?? this.chat,
+        cloud: cloud ?? this.cloud,
       );
+
+  /// The state with one more chat line, keeping the newest `chatKept`.
+  StripState withLine(ChatLine line) {
+    final all = [...chat, line];
+    return copyWith(chat: all.length > chatKept ? all.sublist(all.length - chatKept) : all);
+  }
 }
 
 /// The state after one message. Messages of another version or of an unknown type change nothing.
@@ -110,6 +147,7 @@ StripState reduce(StripState s, Map<String, dynamic> m) {
         ended: false,
         device: m['device'] as String?,
         question: (m['question'] as String?) ?? s.question,
+        cloud: m['cloud'] is bool ? m['cloud'] as bool : s.cloud,
       );
     case 'status':
       final sensors = <String, String>{};
@@ -140,6 +178,8 @@ StripState reduce(StripState s, Map<String, dynamic> m) {
       );
     case 'checkin_closed':
       return s.checkin?.id == m['id'] ? s.copyWith(checkin: () => null) : s;
+    case 'chat':
+      return s.withLine(ChatLine.of(m));
     case 'session':
       return m['state'] == 'ended' ? s.copyWith(ended: true, checkin: () => null) : s;
     default:

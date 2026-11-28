@@ -26,8 +26,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
-  // A thin strip, with room below it for the check-in panel.
-  Win32Window::Size size(840, 230);
+  // A thin strip, with room below it for the check-in or chat panel.
+  Win32Window::Size size(840, 290);
   if (!window.Create(L"MuFuse strip", origin, size)) {
     return EXIT_FAILURE;
   }

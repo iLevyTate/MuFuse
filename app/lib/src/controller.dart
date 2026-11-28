@@ -74,17 +74,48 @@ class StripController extends ChangeNotifier {
   }
 
   /// Send a command; null when it went through, else the reason it did not.
-  Future<String?> send(Map<String, Object?> body) async {
+  Future<String?> send(Map<String, Object?> body) async => (await _command(body)).$1;
+
+  /// The reason it failed (null when it went through) and the engine's reply.
+  Future<(String?, Map<String, dynamic>)> _command(Map<String, Object?> body) async {
     final link = _link;
-    if (link == null) return 'not connected';
+    if (link == null) return ('not connected', <String, dynamic>{});
+    var reply = <String, dynamic>{};
     try {
-      final reply = await link.command(body);
+      reply = await link.command(body);
       lastError = reply['type'] == 'ok' ? null : '${reply['error'] ?? 'refused'}';
     } catch (e) {
       lastError = 'not connected';
     }
     notifyListeners();
-    return lastError;
+    return (lastError, reply);
+  }
+
+  /// Whether the chat panel is open: the wearer's choice, kept here so the view stays plain.
+  bool chatOpen = false;
+
+  void toggleChat() {
+    chatOpen = !chatOpen;
+    notifyListeners();
+  }
+
+  /// Ask the engine. The wearer's line shows at once; the answer arrives as a `chat` event.
+  Future<String?> ask(String text) async {
+    final said = text.trim();
+    if (said.isEmpty) return null;
+    state = state.withLine(ChatLine(role: 'you', text: said));
+    notifyListeners();
+    return send({'type': 'ask', 'text': said});
+  }
+
+  /// Switch the cloud model on or off; the toggle shows what the engine confirmed.
+  Future<String?> setCloud(bool on) async {
+    final (error, reply) = await _command({'type': 'cloud', 'on': on});
+    if (error == null && reply['cloud'] is bool) {
+      state = state.copyWith(cloud: reply['cloud'] as bool);
+      notifyListeners();
+    }
+    return error;
   }
 
   Future<String?> checkIn() => send({'type': 'checkin'});

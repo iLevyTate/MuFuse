@@ -218,6 +218,7 @@ class Engine:
             device=source.device.name if source else None,
             question=QUESTION,
             answers=list(self.store.answers()),
+            cloud=self.store.setting("cloud") == "on",  # so the app's toggle starts right
         )
 
     # One step ----------------------------------------------------------------------------------

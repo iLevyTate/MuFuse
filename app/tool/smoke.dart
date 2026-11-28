@@ -29,13 +29,17 @@ Future<void> main() async {
       final answers = m['answers'] as List;
       final reply = await client.command({'type': 'answer', 'id': m['id'], 'answer': answers.first});
       stdout.writeln('command answer ${answers.first} -> ${reply['type']}');
+      final asked = await client.command({'type': 'ask', 'text': 'what are you seeing?'});
+      stdout.writeln('command ask -> ${asked['type']} source=${asked['source']} cloud=${asked['cloud']}');
+      stdout.writeln('  reply: ${asked['reply']}');
       if (!done.isCompleted) done.complete();
     }
+    if (type == 'chat') stdout.writeln('chat event cloud=${m['cloud']}');
     if (type == 'checkin_closed') stdout.writeln('closed answered=${m['answered']}');
   }, onError: (Object e) {
     if (!done.isCompleted) done.completeError(e);
   });
-  await done.future.timeout(const Duration(seconds: 20));
+  await done.future.timeout(const Duration(seconds: 90)); // a local model can take a while
   await sub.cancel();
   client.close();
   stdout.writeln('ok: ${seen.take(3).join(', ')} ...');
