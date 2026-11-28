@@ -82,6 +82,8 @@ class Hotkey:
         self._thread = None
 
     def _loop(self) -> None:  # pragma: no cover - needs a Windows desktop session
+        if sys.platform != "win32":  # never reached elsewhere; tells the type checker so
+            return
         import ctypes
         from ctypes import wintypes
 
