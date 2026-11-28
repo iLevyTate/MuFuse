@@ -4,12 +4,14 @@ Two minutes sitting quietly, then N minutes of paced breathing (6 a minute by de
 minutes quietly again. The primary measure is the peak-to-trough swing of the beat interval within
 each breath-length window (max minus min interval, median over windows): at 64 Hz it is measured
 far better than RMSSD, which reads high (specs/003-eeg-ppg-features, "What was found"). Every
-phase is cut into windows of the same length, so the phases are measured the same way. The
-result describes the signal; it says nothing about health.
+phase is cut into windows of the same length, so the phases are measured the same way. Beat
+intervals that touch a second judged as moving (002) are left out, and each phase says how long
+that was. The result describes the signal; it says nothing about health.
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -22,6 +24,7 @@ from mufuse.features.pulse import beat_times, combined, plausible, rmssd_ms
 from mufuse.guide import Cue, Guide
 
 if TYPE_CHECKING:
+    from mufuse.quality.answer import SessionQuality, Span
     from mufuse.recording.reader import LoadedSession
 
 QUIET_S = 120.0  # before and after
@@ -100,6 +103,7 @@ class Phase:
     swing_ms: float | None  # median peak-to-trough swing of the beat interval per window
     rmssd_ms: float | None  # experimental at 64 Hz
     windows: int  # breath-length windows with a swing
+    moving_s: float = 0.0  # seconds judged as moving (002), their beat intervals left out
 
 
 @dataclass(frozen=True)
@@ -126,6 +130,7 @@ def report_lines(r: BreatheReport) -> list[str]:
         lines.append(
             f"  {p.name:<7} {p.seconds:5.0f} s  heart rate {hr:>8}  swing {_ms(p.swing_ms):>7}"
             f" ({p.windows} windows)  RMSSD {_ms(p.rmssd_ms):>7} (experimental)"
+            + (f"  {p.moving_s:.0f} s moving left out" if p.moving_s > 0 else "")
         )
     if pace.swing_ms is None or before.swing_ms is None:
         lines.append("Not measured: too little pulse signal in a phase.")
@@ -142,10 +147,26 @@ def report_lines(r: BreatheReport) -> list[str]:
     return lines
 
 
-def phase_measure(name: str, t: np.ndarray, x: np.ndarray, period: float) -> Phase:
-    """Heart rate, swing and RMSSD of one phase's optics frames (`x`: rows by OPT column)."""
+def still(beats: np.ndarray, moving: Sequence[Span]) -> np.ndarray:
+    """For each interval between `beats`, whether it touches no moving span."""
+    keep = np.ones(max(beats.size - 1, 0), dtype=bool)
+    for span in moving:
+        keep &= (beats[1:] <= span.start) | (beats[:-1] >= span.end)
+    return keep
+
+
+def _overlap(lo: float, hi: float, moving: Sequence[Span]) -> float:
+    return sum(max(0.0, min(hi, s.end) - max(lo, s.start)) for s in moving)
+
+
+def phase_measure(
+    name: str, t: np.ndarray, x: np.ndarray, period: float, moving: Sequence[Span] = ()
+) -> Phase:
+    """Heart rate, swing and RMSSD of one phase's optics frames (`x`: rows by OPT column),
+    leaving out beat intervals that touch a `moving` span."""
     seconds = float(t[-1] - t[0]) if t.size else 0.0
-    empty = Phase(name, seconds, None, None, None, 0)
+    moving_s = _overlap(float(t[0]), float(t[-1]), moving) if t.size else 0.0
+    empty = Phase(name, seconds, None, None, None, 0, moving_s)
     if seconds < MIN_PHASE_S:
         return empty
     sixteen = x.shape[1] - 1 == 16
@@ -157,7 +178,8 @@ def phase_measure(name: str, t: np.ndarray, x: np.ndarray, period: float) -> Pha
     if beats.size < 4:
         return empty
     intervals = np.diff(beats)
-    kept = plausible(intervals)
+    calm = still(beats, moving)
+    kept = plausible(intervals) & calm
     ends = beats[1:]
     swings: list[float] = []
     for k in range(int(seconds // period)):
@@ -167,11 +189,16 @@ def phase_measure(name: str, t: np.ndarray, x: np.ndarray, period: float) -> Pha
             swings.append(float(np.ptp(intervals[inside])))
     hr = 60.0 / float(np.median(intervals[kept])) if int(kept.sum()) >= 2 else None
     swing = 1000.0 * float(np.median(swings)) if swings else None
-    return Phase(name, seconds, hr, swing, rmssd_ms(intervals), len(swings))
+    # NaN, not removed: neighbours across a moving span must not count as successive
+    rmssd = rmssd_ms(np.where(calm, intervals, np.nan))
+    return Phase(name, seconds, hr, swing, rmssd, len(swings), moving_s)
 
 
-def measure(session: LoadedSession, rate: float = DEFAULT_RATE) -> BreatheReport | None:
-    """The report of a recorded breathe session; None when its markers are not all there."""
+def measure(
+    session: LoadedSession, rate: float = DEFAULT_RATE, quality: SessionQuality | None = None
+) -> BreatheReport | None:
+    """The report of a recorded breathe session; None when its markers are not all there.
+    `quality` is the session judged by 002 (judged here when not given)."""
     at = {m.label: m.t for m in session.markers if m.label.startswith("b:")}
     if not all(k in at for k in ("b:before", "b:pace", "b:after", "b:end")):
         return None
@@ -181,10 +208,14 @@ def measure(session: LoadedSession, rate: float = DEFAULT_RATE) -> BreatheReport
         "pace": (at["b:pace"], at["b:after"]),
         "after": (at["b:after"], at["b:end"]),
     }
+    if quality is None:
+        from mufuse.quality.engine import judge
+
+        quality = judge(session)
     period = 60.0 / rate
     phases: dict[str, Phase] = {}
     for name in PHASES:
         lo, hi = edges[name]
         keep = (ts >= lo) & (ts < hi)
-        phases[name] = phase_measure(name, ts[keep], data[keep], period)
+        phases[name] = phase_measure(name, ts[keep], data[keep], period, quality.movement_spans)
     return BreatheReport(rate, phases)

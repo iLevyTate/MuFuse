@@ -13,7 +13,9 @@ from mufuse.exercises.breathe import (
     breathe_guide,
     phase_measure,
     report_lines,
+    still,
 )
+from mufuse.quality.answer import Span
 
 
 def test_the_guide_has_three_phases_with_markers_and_pacing_every_half_breath() -> None:
@@ -89,3 +91,23 @@ def test_without_a_pulse_it_says_not_measured() -> None:
     empty = Phase("before", 120.0, None, None, None, 0)
     r = BreatheReport(6.0, {"before": empty, "pace": empty, "after": empty})
     assert report_lines(r)[-1] == "Not measured: too little pulse signal in a phase."
+
+
+def test_a_beat_interval_touching_a_moving_span_is_left_out() -> None:
+    beats = np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
+    moving = (Span("movement", 1.5, 2.5), Span("movement", 4.9, 6.0))
+    # intervals 0-1, 1-2, 2-3, 3-4, 4-5: 1-2 and 2-3 overlap the first span, 4-5 the second
+    assert still(beats, moving).tolist() == [True, False, False, True, False]
+    assert still(beats, ()).all()
+
+
+def test_the_result_says_how_long_the_head_moved_in_a_phase() -> None:
+    def ph(name: str, moving: float) -> Phase:
+        return Phase(name, 120.0, 70.0, 100.0, 50.0, 12, moving_s=moving)
+
+    r = BreatheReport(
+        6.0, {"before": ph("before", 0.0), "pace": ph("pace", 7.0), "after": ph("after", 0.0)}
+    )
+    lines = report_lines(r)
+    assert sum("moving" in line for line in lines) == 1
+    assert "7 s moving left out" in next(line for line in lines if line.strip().startswith("pace"))

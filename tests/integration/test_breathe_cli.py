@@ -59,6 +59,35 @@ def test_a_rehearsed_session_shows_the_bigger_swing_while_pacing(
     assert [x for x in labels if x.startswith("b:")] == ["b:before", "b:pace", "b:after", "b:end"]
 
 
+def test_seconds_the_head_moved_are_left_out_of_the_pacing_phase(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    rate, minutes = 6.0, 2.0
+    turns = ((150.0, 156.0), (200.0, 204.0))  # both inside the pacing phase (120-240 s)
+    wearer = replace(rehearsal_wearer(rate, minutes), turns=turns, **QUICK)
+    rehearsal = Rehearsal(wearer, clock=clock, sleep=clock.advance)
+    code, report, _ = _breathe(
+        _Attempt("breathe", SourceKind.sim, "p1041", clock.now),
+        rehearsal.source,
+        rehearsal.read_key,
+        tmp_path,
+        breathe_guide(rate, minutes),
+        rate,
+        clock=clock,
+        sleep=lambda _: clock.advance(TICK_S),
+        check=Preflight(wait_s=20.0),
+        on_start=lambda: rehearsal.delay_script(rehearsal.now()),
+    )
+    assert code == 0
+    assert report is not None
+    before, pace = report.phases["before"], report.phases["pace"]
+    assert before.moving_s == 0.0
+    assert pace.moving_s >= 8.0
+    assert pace.swing_ms is not None
+    assert before.swing_ms is not None
+    assert pace.swing_ms > 1.5 * before.swing_ms  # still seen with the moving seconds left out
+
+
 def test_bad_rate_exits_2() -> None:
     result = CliRunner().invoke(app, ["breathe", "--source", "sim", "--rate", "20"])
     assert result.exit_code == EXIT_BAD_ARGS

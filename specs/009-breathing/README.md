@@ -45,6 +45,10 @@ the owner's (not a show stopper).
    minutes of short steps, plain words, no health claims, nothing said about the person. Every
    line goes through the 007 output filter (`mufuse.chat.filter.check`) in a test.
 7. No new dependency.
+8. **Moving seconds are left out (009b).** The session is judged by 002 (`judge`, the same as
+   live); a beat interval that touches a movement span is left out of the swing, the heart rate
+   and RMSSD (as a hole, so neighbours across it are not paired). Each phase reports how many
+   seconds were moving; a whole breath window that moved simply has too few beats for a swing.
 
 ## Constitution Check
 
@@ -68,4 +72,5 @@ of sessions with the swing raised.
 - [x] swing, heart rate, RMSSD per phase; report
 - [x] `mufuse breathe`, `mufuse exercise defusion|urge`
 - [x] docs
+- [x] moving seconds left out of every phase, seconds reported (009b)
 - [ ] sessions on the headband (owner)
