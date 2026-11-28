@@ -18,6 +18,8 @@ uv run python scripts/hw_acceptance.py             # every hardware check in one
 uv run python scripts/hw_acceptance.py --rehearse  # the same on the simulator, no headband
 uv run mufuse quality label --source sim           # the 002 labelled session, simulated (9.5 min)
 uv run python scripts/make_quality_reference.py    # after a meant rules change; raise RULES_VERSION
+uv run python scripts/make_features_reference.py   # after a meant features change; raise FEATURES_VERSION
+MUFUSE_SIM_WEARER=resting uv run mufuse record --source sim --duration 120   # data for `features`
 ```
 
 ## Workflow
@@ -38,7 +40,11 @@ uv run python scripts/make_quality_reference.py    # after a meant rules change;
 - `quality/` — feature 002: `engine.py` judges each 1 s stretch (contact, coverage, eye, tension,
   movement) from samples only, the same live and replayed; `labelled.py` the cued session and
   scorer; `public_set.py` the Muse 2 set. Rules: `specs/002-signal-quality/contracts/quality-rules.md`.
-- `cli.py` — `devices / stream / record / inspect / quality`; `banner.py` — header shown only on a TTY.
+- `features/` — feature 003: `engine.py` makes one frame per judged second (exponent, alpha
+  peak, band shares, blink rate, HR, RMSSD, z-scores vs a rolling personal baseline), the same
+  live and replayed; constants in `params.py` (`FEATURES_VERSION`); golden frames in
+  `tests/data/features_reference/` (`scripts/make_features_reference.py`).
+- `cli.py` — `devices / stream / record / inspect / features / quality`; `banner.py` — header shown only on a TTY.
 
 ## Gotchas
 - Only one device can connect to the headband; the phone Muse app must be closed.

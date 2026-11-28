@@ -55,6 +55,7 @@ marks find, and what they do not find yet, is in [`docs/KNOWN-ISSUES.md`](docs/K
 | `mufuse inspect` | Summarize a recorded session, ending with its signal quality |
 | `mufuse quality label` | Check the fit, then record the guided 9.5-minute labelled session (cued blinks, jaw clenches, head turns, sensor lifts) and score it |
 | `mufuse quality score` | Score a labelled recording, or the public Muse 2 set with `--public DIR` |
+| `mufuse features` | Per-second EEG and pulse features of a recording (aperiodic exponent, alpha peak, band shares, blink rate, heart rate, RMSSD), each against your own baseline; `--csv` writes them out |
 | `python scripts/hw_acceptance.py` | Every hardware check of the headband in one guided sitting (`--rehearse` plays it on the simulator) |
 
 Next up: the gate sitting for signal quality, then EEG and heart-rate features, the labelling
@@ -102,6 +103,7 @@ uv run mufuse stream                                   # fit: each sensor should
 uv run python scripts/hw_acceptance.py                 # the unit: every hardware check, guided
 uv run mufuse quality label --source athena            # your head: 9.5 min of cues, ends with a score
 uv run mufuse quality score recordings/<session_id>    # score that recording again later
+uv run mufuse features recordings/<session_id> --csv f.csv   # per-second features (003)
 ```
 
 Without a headband, `scripts/hw_acceptance.py --rehearse` and `mufuse quality label --source sim`
