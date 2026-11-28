@@ -1,8 +1,8 @@
 # Contract: Quality rules, version 1
 
-The definition a test or a port must reproduce. The numbers marked *tuned* are initial values; they are set in
-build step 9 and this file is corrected in the same commit, before rules v1 is used for any score. After that, a
-change to anything on this page that alters an answer is rules v2.
+The definition a test or a port must reproduce. Frozen on 2026-11-27, before rules v1 was used for the gate
+score: the limits for blinks, tension and movement were checked on real data and stand as drafted (research
+R13). A change to anything on this page that alters an answer is rules v2.
 
 Inputs: the EEG stream (256 Hz, µV, columns TP9, AF7, AF8, TP10) and the MOTION stream (52 Hz, ACC_X/Y/Z in g,
 GYRO_X/Y/Z in deg/s), each with one timestamp per sample, as a source delivers them or a recording holds them.
@@ -61,7 +61,7 @@ Per forehead sensor, sample by sample since the anchor:
 2. Envelope: the absolute value, then the mean of the last 32 samples (samples before the anchor count as 0).
 3. Limit of a stretch: from the envelope samples of the 30 s before the stretch start (not before the anchor),
    every 8th sample counted from the anchor: median + 4 × 1.4826 × median absolute deviation, and at least
-   15 µV *(tuned: 4, 15)*.
+   15 µV.
 
 Then, for both sensors together:
 
@@ -95,15 +95,15 @@ and `X = rfft(x * w)`:
   42, 43, 44, 84, 85 and 86. The unit is µV rms.
 - Level of the stretch: the smaller of the two levels when both sensors are in use; the one level when one is.
 - Tension mark: `unavailable` when no forehead sensor is in use (the level is then none); else `yes` when the
-  level is above 10 µV *(tuned)*; else `no`.
+  level is above 10 µV; else `no`.
 
 ## 6 Movement
 
 From the MOTION samples of the stretch:
 
 - `unknown` with fewer than 26 samples.
-- Else `moving` when sqrt(mean(GYRO_X² + GYRO_Y² + GYRO_Z²)) is above 20 deg/s *(tuned)*, or the standard
-  deviation of ACC_X, ACC_Y or ACC_Z is above 0.05 g *(tuned)*.
+- Else `moving` when sqrt(mean(GYRO_X² + GYRO_Y² + GYRO_Z²)) is above 20 deg/s, or the standard
+  deviation of ACC_X, ACC_Y or ACC_Z is above 0.05 g.
 - Else `still`.
 
 The movement value applies to the EEG and to the optics of the same stretch.

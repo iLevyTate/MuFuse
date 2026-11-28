@@ -303,7 +303,7 @@ the number found, and pass or fail against 90%.
 - [X] T055 Tune the limits marked *tuned* in `contracts/quality-rules.md` on the saved 001 sessions in
   `recordings/`, on the public set and on the simulator (research R13). Write the outcome as numbers only into
   `specs/002-signal-quality/research.md` (R13); no recording, path or device name goes into any committed file
-- [ ] T056 Freeze rules v1 in one commit: `src/mufuse/quality/rules.py`, `contracts/quality-rules.md` (the word
+- [X] T056 Freeze rules v1 in one commit: `src/mufuse/quality/rules.py`, `contracts/quality-rules.md` (the word
   *tuned* removed), and `tests/data/quality_reference/` regenerated with `scripts/make_quality_reference.py`
 - [X] T057 [P] Docs: `README.md` (quality block, `inspect` summary, `mufuse quality`), `docs/ROADMAP.md` (002
   status), `docs/KNOWN-ISSUES.md` (what 002 shows while the ear sensors are out), `CLAUDE.md` (architecture and
