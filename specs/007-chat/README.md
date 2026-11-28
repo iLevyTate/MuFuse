@@ -56,6 +56,8 @@ them, and every change to them goes through review with those suites.
 8. **Fast loop.** Check-ins, tones and observations never wait for a model; `ask` runs outside the
    engine's lock, so a slow model never holds up a step.
 
+Voice (007b) has its own note: [`voice.md`](voice.md).
+
 ## Constitution Check
 
 I: local model by default; cloud opt-in, summary only, badge on every cloud reply. II: the filter.
