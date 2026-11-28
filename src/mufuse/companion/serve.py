@@ -262,7 +262,12 @@ class Engine:
                 text=event.text,
             )
         )
+        if event.kind == "end":
+            self.store.observation_ended(self.session, series=event.series, t=event.t)
         if event.kind == "start":
+            self.store.observation_started(
+                self.session, series=event.series, direction=event.direction, t=event.t
+            )
             self._observed_n += 1
             now = self.clock()
             if not self._scheduler.snoozed(now):
@@ -436,6 +441,14 @@ class Engine:
                 return self._answer_cmd(body, now)
             if kind == "snooze":
                 self._scheduler.snooze(now)
+                return self._message("ok", t=now)
+            if kind == "note":
+                text = str(body.get("text") or "").strip()
+                if not text:
+                    return self._message("error", error="an empty note")
+                raw = body.get("tags")
+                tags = [str(t) for t in raw] if isinstance(raw, list) else []  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
+                self.store.note(t=now, text=text, tags=tags, session=self.session)
                 return self._message("ok", t=now)
             if kind == "cloud":
                 on = bool(body.get("on"))
