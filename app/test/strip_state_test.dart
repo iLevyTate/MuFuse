@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mufuse_strip/src/strip_state.dart';
 
@@ -13,9 +15,14 @@ Map<String, dynamic> status(Map<String, String> sensors, {String line = 'blinks 
     };
 
 void main() {
-  test('every stored example is read without error', () {
+  test('every stored example is read without error, session last', () {
+    final types = [
+      for (final f in examplesDir.listSync().whereType<File>())
+        if (f.path.endsWith('.json')) f.uri.pathSegments.last.replaceAll('.json', ''),
+    ]..sort((a, b) => (a == 'session' ? 1 : 0).compareTo(b == 'session' ? 1 : 0));
+    expect(types, containsAll(['hello', 'status', 'checkin', 'checkin_closed', 'session']));
     var s = const StripState();
-    for (final type in ['hello', 'status', 'features', 'checkin', 'checkin_closed', 'session']) {
+    for (final type in types) {
       s = reduce(s, example(type));
     }
     expect(s.connected, isTrue);
