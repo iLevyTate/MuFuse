@@ -212,3 +212,23 @@ uv run mufuse quality label --source sim --out <a scratch folder>
 
 The ear sensors are not needed: everything in this session reads AF7, AF8 and the motion sensors.
 
+# Hardware sitting: 004 fNIRS validation (experimental)
+
+Five sittings on different days, about 12 minutes each, eyes open throughout. The Muse app must be
+closed. It starts with the same fit check as the 002 session.
+
+```
+uv run mufuse fnirs protocol --source athena
+```
+
+| Time | Block |
+|---|---|
+| 0:00 | Settle, then 1 minute of rest |
+| 1:30 | 5 breath-holds: breathe out normally, hold 20 s, breathe and rest 40 s |
+| 6:40 | 5 counts: count down by 7 silently for 30 s, rest 30 s |
+| 11:40 | Done: it saves and scores |
+
+Each sitting prints its share of blocks where HbO (outer detectors) went up as expected. The gate
+needs 70% across the five; until then every hemoglobin number stays labelled EXPERIMENTAL. The
+arithmetic direction on the forehead is not universal, so a fail there is a finding, not a fault.
+To score a sitting again: `uv run mufuse fnirs score recordings/<session>`.

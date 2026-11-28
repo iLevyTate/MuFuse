@@ -28,10 +28,12 @@ from mufuse.acquisition.supervisor import StreamSupervisor
 from mufuse.acquisition.types import SourceError, StreamKind
 from mufuse.banner import print_banner
 from mufuse.config import load_config, save_config
+from mufuse.fnirs.protocol import FnirsScore
 from mufuse.guide import Guide, guide_from_env
 from mufuse.keys import KeyPoller
 from mufuse.live_view import YELLOW, LiveStats, Screen, render
 from mufuse.preflight import START_KEYS, Preflight
+from mufuse.quality.answer import SessionQuality
 from mufuse.quality.engine import judge
 from mufuse.quality.labelled import (
     RUN_S,
@@ -44,7 +46,7 @@ from mufuse.quality.labelled import (
 )
 from mufuse.quality.summary import summarize, summary_lines
 from mufuse.recording.format import Marker
-from mufuse.recording.reader import load_session
+from mufuse.recording.reader import LoadedSession, load_session
 from mufuse.recording.writer import SessionWriter
 from mufuse.runlog import ConnectRun, TimeToSignal, append_run
 from mufuse.sound import tone
@@ -987,3 +989,166 @@ def quality_score(
     for line in report_lines(report):
         console.print(line, markup=False, highlight=False)
     raise typer.Exit(0 if report.passed else 1)
+
+
+# mufuse fnirs (004, experimental) ------------------------------------------------------------
+
+fnirs_app = typer.Typer(
+    no_args_is_help=True, help="fNIRS (EXPERIMENTAL): relative hemoglobin changes, validation."
+)
+app.add_typer(fnirs_app, name="fnirs")
+
+
+def _load_or_exit(path: Path) -> LoadedSession:
+    try:
+        return load_session(path)
+    except (OSError, ValueError, KeyError) as exc:
+        console.print(f"[red]Cannot read session: {exc}[/red]")
+        raise typer.Exit(EXIT_UNREADABLE) from exc
+
+
+@fnirs_app.command("show")
+def fnirs_show(
+    path: Annotated[Path, typer.Argument(help="A recorded session folder")],
+    csv_out: Annotated[
+        Path | None, typer.Option("--csv", help="Also write ΔHbO/ΔHbR per sample to this file")
+    ] = None,
+    short_channel: Annotated[
+        bool, typer.Option(help="Regress the inner detectors out (unverified geometry)")
+    ] = False,
+) -> None:
+    """Relative ΔHbO and ΔHbR per detector of a recorded session. EXPERIMENTAL."""
+    from mufuse.fnirs.pipeline import NotAvailableError, analyze
+    from mufuse.fnirs.report import hemo_lines, write_csv
+
+    session = _load_or_exit(path)
+    try:
+        hemo = analyze(session, short_channel=short_channel)
+    except NotAvailableError as exc:
+        console.print(f"fNIRS: not available ({exc})", markup=False, highlight=False)
+        raise typer.Exit(EXIT_BAD_ARGS) from exc
+    for line in hemo_lines(hemo):
+        console.print(line, markup=False, highlight=False)
+    if csv_out is not None:
+        write_csv(hemo, csv_out)
+        console.print(f"Wrote {hemo.t.size} rows: {csv_out}", markup=False, highlight=False)
+
+
+def _fnirs_protocol(
+    attempt: _Attempt,
+    factory: Callable[[], HeadbandSource],
+    read_key: Callable[[], str | None],
+    out: Path,
+    *,
+    clock: Callable[[], float] = time.time,
+    sleep: Callable[[float], None] = time.sleep,
+    check: Preflight | None = None,
+    on_start: Callable[[], None] | None = None,
+) -> tuple[int, FnirsScore | None, Path | None]:
+    """Record the guided protocol, then score it. Returns the exit code, the score (None when it
+    was stopped early) and the session folder."""
+    from mufuse.fnirs.pipeline import NotAvailableError, analyze
+    from mufuse.fnirs.protocol import RUN_S as FNIRS_RUN_S
+    from mufuse.fnirs.protocol import cues_from_markers as fnirs_cues
+    from mufuse.fnirs.protocol import protocol_guide, score_lines
+    from mufuse.fnirs.protocol import score as fnirs_score
+
+    folder: list[Path] = []
+
+    def writer(src: HeadbandSource) -> SessionWriter:
+        w = SessionWriter.create(out, src.device, src.streams, notes="fnirs protocol", clock=clock)
+        folder.append(w.session_dir)
+        return w
+
+    stats = LiveStats(clock)
+    _run(
+        attempt,
+        factory,
+        FNIRS_RUN_S,
+        writer,
+        clock=clock,
+        sleep=sleep,
+        read_key=read_key,
+        stats=stats,
+        guide=protocol_guide(),
+        preflight=check,
+        on_start=on_start,
+    )
+    if not folder:
+        return EXIT_INTERRUPTED, None, None
+    session = load_session(folder[0])
+    cues = fnirs_cues(session.markers)
+    if not any(c.kind == "end" for c in cues):
+        console.print("Stopped before the end: the session is saved, but not scored.")
+        return EXIT_INTERRUPTED, None, folder[0]
+    quality = SessionQuality.of(stats.answers, stats.blinks)  # judged live, the same as replayed
+    try:
+        result = fnirs_score(analyze(session, quality), cues)
+    except NotAvailableError as exc:
+        console.print(f"fNIRS: not available ({exc})", markup=False, highlight=False)
+        return EXIT_BAD_ARGS, None, folder[0]
+    for line in score_lines(result):
+        console.print(line, markup=False, highlight=False)
+    return 0, result, folder[0]
+
+
+@fnirs_app.command("protocol")
+def fnirs_protocol(
+    source: Annotated[
+        SourceKind, typer.Option(help="athena = headband, sim = a simulated wearer who follows")
+    ] = SourceKind.athena,
+    device: DeviceOpt = None,
+    out: Annotated[Path, typer.Option(help="Recordings folder")] = Path("recordings"),
+    check: Annotated[
+        bool, typer.Option(help="Check the fit first; after 60 s you may start anyway")
+    ] = True,
+) -> None:
+    """Check the fit, record the guided fNIRS protocol (about 12 minutes), then score it."""
+    if source is SourceKind.play:
+        console.print("[red]The protocol is recorded live: use --source athena or sim[/red]")
+        raise typer.Exit(EXIT_BAD_ARGS)
+    from mufuse.fnirs.protocol import rehearsal_wearer as fnirs_wearer
+
+    attempt = _Attempt.begin("fnirs protocol", source, DEFAULT_PRESET)
+    if source is SourceKind.sim:
+        from mufuse.acquisition.simulated import Rehearsal
+
+        rehearsal = Rehearsal(fnirs_wearer())
+        factory: Callable[[], HeadbandSource] = rehearsal.source
+        read_key = lambda: rehearsal.read_key() or _read_key()  # noqa: E731
+        # The scripted wearer follows the cues, so the script waits for the check as well.
+        on_start: Callable[[], None] | None = lambda: rehearsal.delay_script(rehearsal.now())  # noqa: E731
+    else:
+        factory, read_key = _source_factory(source, device, DEFAULT_PRESET, None)
+        on_start = None
+    preflight = Preflight() if check else None
+    with _KEYS:
+        code, _, _ = _fnirs_protocol(
+            attempt, factory, read_key, out, check=preflight, on_start=on_start
+        )
+    raise typer.Exit(code)
+
+
+@fnirs_app.command("score")
+def fnirs_score_cmd(
+    path: Annotated[Path, typer.Argument(help="A recorded protocol session folder")],
+) -> None:
+    """Score a recorded fNIRS protocol session again. EXPERIMENTAL."""
+    from mufuse.fnirs.pipeline import NotAvailableError, analyze
+    from mufuse.fnirs.protocol import cues_from_markers as fnirs_cues
+    from mufuse.fnirs.protocol import score as fnirs_score
+    from mufuse.fnirs.protocol import score_lines
+
+    session = _load_or_exit(path)
+    cues = fnirs_cues(session.markers)
+    if not cues:
+        console.print("This session holds no f: cue markers: it is not a protocol session.")
+        raise typer.Exit(EXIT_BAD_ARGS)
+    try:
+        result = fnirs_score(analyze(session), cues)
+    except NotAvailableError as exc:
+        console.print(f"fNIRS: not available ({exc})", markup=False, highlight=False)
+        raise typer.Exit(EXIT_BAD_ARGS) from exc
+    for line in score_lines(result):
+        console.print(line, markup=False, highlight=False)
+    raise typer.Exit(0 if result.passed else 1)

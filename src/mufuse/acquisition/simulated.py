@@ -193,6 +193,7 @@ class Wearer:
     resting: bool = False  # EEG with a 1/f background and alpha bursts (feature 003)
     exponent: float = 1.5  # ... the slope of that background
     heart_bpm: float = 72.0
+    hemo: tuple[tuple[float, float, float], ...] = ()  # (from, to, ΔHbO µM) at every detector (004)
     firmware: str = "3.1.19"
     battery: float = 80.0  # percent
     connect_s: float = 4.0  # how long start() takes
@@ -221,6 +222,36 @@ def resting_eeg(t: FloatArray, exponent: float, seed: int = 0) -> FloatArray:
         out[:, k] = np.sin(arg + phases[k, :-1]) @ amp
         out[:, k] += ALPHA_UV * burst * np.sin(2 * np.pi * 10.0 * t + phases[k, -1])
     return out
+
+
+HEMO_RAMP_S = 5.0  # a hemodynamic response rises and falls over this long
+HEMO_HBR_SHARE = -0.3  # ΔHbR = -0.3 ΔHbO
+
+
+def hemo_envelope(t: FloatArray, spans: Sequence[tuple[float, float, float]]) -> FloatArray:
+    """ΔHbO (µM) over time: each span with raised-cosine edges of HEMO_RAMP_S."""
+    out = np.zeros(t.size)
+    for start, end, um in spans:
+        ramp = min(HEMO_RAMP_S, (end - start) / 2)
+        up = np.clip((t - start) / ramp, 0.0, 1.0)
+        down = np.clip((end - t) / ramp, 0.0, 1.0)
+        out += um * 0.5 * (1 - np.cos(np.pi * np.minimum(up, down)))
+    return out
+
+
+def _hemodynamics(
+    level: FloatArray, t: FloatArray, spans: Sequence[tuple[float, float, float]]
+) -> None:
+    """Dim the 730 and 850 nm rows as the given ΔHbO (and ΔHbR) would, through the forward
+    Beer-Lambert model at each detector's distance (feature 004)."""
+    from mufuse.fnirs.mbll import DETECTORS, DISTANCE_CM, intensities, rows_of
+
+    hbo = hemo_envelope(t, spans)
+    for detector in DETECTORS:
+        r730, r850 = rows_of(detector)
+        f730, f850 = intensities(hbo, HEMO_HBR_SHARE * hbo, 1.0, 1.0, DISTANCE_CM[detector])
+        level[:, r730] *= f730
+        level[:, r850] *= f850
 
 
 class Rehearsal:
@@ -280,6 +311,7 @@ class Rehearsal:
             railed=on(w.railed),
             turns=spans(w.turns),
             optics=tuple((t + seconds, where) for t, where in w.optics),
+            hemo=tuple((a + seconds, b + seconds, um) for a, b, um in w.hemo),
         )
         self._keys = [(t + seconds, key) for t, key in self._keys]
 
@@ -403,6 +435,8 @@ class _WornAthena(SimulatedAthena):
             on_head[rows] = sensors == "head"
         pulse = PULSE_SHARE * np.sin(2 * np.pi * (wearer.heart_bpm / 60.0) * t) * on_head
         level[:, _LED] *= 1 + pulse[:, None]
+        if wearer.hemo:
+            _hemodynamics(level, t, wearer.hemo)
         optics = np.empty((rel.size, 17))
         optics[:, :16] = level + OPTICS_SCATTER * noise[:, :16]
         optics[:, 16] = np.where(rel < BATTERY_SILENT_S, 0.0, wearer.battery)
