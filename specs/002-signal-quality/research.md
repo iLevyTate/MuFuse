@@ -215,3 +215,22 @@ then frozen as rules v1 (see R13). The exact v1 definitions are in `contracts/qu
   feature.
 - ASR (asrpy, meegkit), autoreject, pyprep, pyRiemann Potato: repair or batch tools with heavy or blocked
   dependencies on Python 3.15. Rejected in the survey.
+
+## R17 First labelled sitting on the Athena (2026-11-27, tuning data)
+- **What it is**: the first of the two sittings in `quickstart.md`, scored on rules v1 as drafted (untuned). It is
+  tuning data for R13, not the gate. Numbers only; the recordings stay on the machine.
+- **Full session**: blinks 19 of 20, jaw clenches 20 of 20, head turns 18 of 20, sensor lifts 9 of 10: each
+  passes. Quiet fails: muscle activity 0.0%, head movement 0.9%, 5.5 blinks per minute with eyes closed (limit 2),
+  6 false marks (five blinks in the eyes-closed minute, one movement mark in the eyes-open minute).
+- **Why quiet failed**: the terminal bell that ends the eyes-closed minute made no sound in Windows Terminal, and
+  the eyes were opened during that minute to check the screen. The five blinks are real eye openings, so the fail
+  is kept as recorded and is not a fault of the blink rule. The bell cue now also plays a tone on the sound card
+  (`src/mufuse/sound.py`); it was heard in the repeat.
+- **Eyes-closed minute repeated alone** (80 s, same cue label, with the tone): 55 stretches judged, 0 blinks, muscle
+  activity 0.0%, head movement 0.0%, 0 false marks: quiet passes. AF7 and AF8 had good contact in all 55.
+- **Where the misses fall**: every miss is at the start of its block (the first blink cue, the first two turn
+  cues, the first AF7 lift). That points at the wearer finding the movement, not at a limit.
+- **Not settled**: no blink was marked in the eyes-open minute, and it is not known whether one was made. The ear
+  sensors came and went (issue #12); no conclusion is drawn from them.
+- **Standing**: each kind has passed once on the drafted limits, across two recordings. The gate is still one
+  full session recorded after the limits are frozen (T056, then T061).
